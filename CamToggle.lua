@@ -1,5 +1,8 @@
 local obs = obslua
-local version = "0.3"
+local version = "0.4"
+
+-- Set true to get debug printing
+local debug_print_enabled = false
 
 -- Global variables to restore the scene
 local stretchable_source_id = "dshow_input"  -- ID of the source to act on
@@ -16,8 +19,17 @@ function script_description()
            hiding a specified Source, such as a slide show.</p>]]
 end
 
+-- Log a message if debugging is enabled
+function debug_print(a_string)
+    if debug_print_enabled then
+        print(a_string)
+    end
+end
+
 -- Called at script load
 function script_load(settings)
+    print("CamToggle version " .. version)
+
     -- Connect our callbacks
     hotkey_id = obs.obs_hotkey_register_frontend("camtoggle_button", "[CamToggle]toggle", on_hotkey)
 
@@ -108,7 +120,7 @@ function populate_list_with_stretchable_source_ids(list_property)
     end
     table.sort(arr)
     for i,typee in ipairs(arr) do
-        print( "Type='" .. typee .. "'")
+        debug_print( "Type='" .. typee .. "'")
         obs.obs_property_list_add_string(list_property, typee, typee)
     end    
 
@@ -128,7 +140,7 @@ function populate_list_with_source_names(list_property)
     
     table.sort(names)
     for i,name in ipairs(names) do
-        print( "Source='" .. name .. "'")
+        debug_print( "Source='" .. name .. "'")
         obs.obs_property_list_add_string(list_property, name, name)
     end
     obs.source_list_release(sources)
@@ -152,7 +164,7 @@ end
 
 function show_sizing(a_label, a_scene_source, a_width, a_height)
     local name = obs.obs_source_get_name(a_scene_source)
-    print(a_label .. " '" .. name .. "' (" .. a_width .. "," .. a_height .. ")")
+    debug_print(a_label .. " '" .. name .. "' (" .. a_width .. "," .. a_height .. ")")
 end
 
 -- Set stretchable source fullscreen, and hide hideable source.

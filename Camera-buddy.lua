@@ -1,13 +1,15 @@
-print("Camera buddy")
 obs = obslua
 local socket = require("ljsocket")
 
-local version = "0.4"
+local version = "0.5"
+
+-- Set true to get debug printing
+local debug_print_enabled = false
 
 -- Description displayed in the Scripts dialog window
 function script_description()
-    print("in script_description")
-    return '<h2>SimpleSlides Version ' .. version ..'</h2>' ..
+    debug_print("in script_description")
+    return '<h2>Camera-buddy Version ' .. version ..'</h2>' ..
         [[
            <p>Send camera PTZ preset commands when a scene is Previewed/shown,
            unless the camera is already in use on the Program; in which
@@ -56,9 +58,15 @@ local PTZ_JSON_DATA = [[
 
 local ptz_text = ' The camera is in use by the Program scene. \n It will be set to "%s" when this scene \n transitions to Program. '
 
+-- Log a message if debugging is enabled
+function debug_print(a_string)
+    if debug_print_enabled then
+        print(a_string)
+    end
+end
 
 function script_load(settings)
-    print("in script_load")
+    print("Camera-buddy version " .. version)
     
     -- Read our configuration data
     load_camera_data()
@@ -75,20 +83,20 @@ function script_load(settings)
 end
 
 function script_unload()
-    print("in script_unload")
+    debug_print("in script_unload")
 	release_ptz_sources()
     camera_presets = nil
     camera_selectors = nil
     last_cam_setting = nil
-    print("  end script_unload")
+    debug_print("  end script_unload")
 end
 
 function script_defaults(settings)
-    print("in script_defaults")
+    debug_print("in script_defaults")
 end
 
 function script_properties()
-    print("in script_properties")
+    debug_print("in script_properties")
     
     local props = obs.obs_properties_create()
     obs.obs_properties_add_button(props, "up_button",    " UP ", up_button_clicked)
@@ -103,11 +111,11 @@ function script_properties()
 end
 
 function script_update(settings)
-    print('in script_update')
+    debug_print('in script_update')
 end
 
 function script_save(settings)
-    print("in script_save")
+    debug_print("in script_save")
 
     local save_array = obs.obs_hotkey_save(hotkey_transition_id)
     obs.obs_data_set_array(settings, "transition_hotkey", save_array)
@@ -123,7 +131,7 @@ function on_source_activate(cs)
             if ix == 1 then
                 -- Hide the status message: the front-end event is too late
                 -- and allows the message to show briefly
-                -- print( 'on_source_activate disabling "' .. name .. '"' )
+                -- debug_print( 'on_source_activate disabling "' .. name .. '"' )
                 obs.obs_source_set_enabled(source, false)
              end
         end
@@ -140,7 +148,7 @@ function handle_frontend_event(event)
             -- but doesn't happen if we reload this script.
             -- So we ignore the first OBS_FRONTEND_EVENT_PREVIEW_SCENE_CHANGED,
             -- but act on subsequent ones
-            print("Early OBS_FRONTEND_EVENT_PREVIEW_SCENE_CHANGED")
+            debug_print("Early OBS_FRONTEND_EVENT_PREVIEW_SCENE_CHANGED")
             change_count = change_count + 1
             if change_count > 1 then
                 load_complete = true
@@ -161,7 +169,7 @@ end
 -- Load configuration from a file shared with our browser dock
 function load_camera_data()
     -- Content is json, wrapped in a JavaScript variable so that
-    -- the dock can load it as code for security simplicity
+    -- the browser dock can load it as code for security simplicity
     path = script_path() .. config_file
     infile = io.open(path, 'r')
     if infile then
@@ -172,8 +180,6 @@ function load_camera_data()
         local ix, jx = string.find(raw, "cam_data=")
         if ix == 1 then
             local data = string.sub(raw, jx+1, #raw-1)
-            -- print('Data ***' .. data .. '***')
-
             local obj = obs.obs_data_create_from_json(data)
             if obj then
                 ip_address_and_port = obs.obs_data_get_string(obj, "cam_address")
@@ -240,7 +246,7 @@ end
 
 -- Find special text sources that control us and be sure they are configured
 function configure_ptz_sources()
-    print("in configure_ptz_sources")
+    debug_print("in configure_ptz_sources")
 
     -- Release any sources we made during a previous load
     release_ptz_sources()
@@ -254,11 +260,11 @@ function configure_ptz_sources()
         local name = source_key .. ' ' .. key
         local source = obs.obs_get_source_by_name(name)
         if source ~= nil then
-            print('  Updating existing PTZ source "' .. name .. '"')
+            debug_print('  Updating existing PTZ source "' .. name .. '"')
             obs.obs_source_update(source, settings)
             obs.obs_source_release(source) 
         else
-            print('  Making PTZ source "' .. name .. '"')
+            debug_print('  Making PTZ source "' .. name .. '"')
             local new_source = obs.obs_source_create("text_gdiplus", name, settings, nil)
             if new_source ~= nil then
                 table.insert(ptzs_we_made, new_source)
@@ -290,7 +296,7 @@ end
 function release_ptz_sources()
     for i, source in ipairs(ptzs_we_made) do
         local source_name = obs.obs_source_get_name(source)
-        print('Releasing source ' .. i .. ' "' .. source_name .. '"')
+        debug_print('Releasing source ' .. i .. ' "' .. source_name .. '"')
         obs.obs_source_release(source)
     end
     ptzs_we_made = {}
@@ -305,7 +311,7 @@ function get_preset_info(label, scenesource)
     local num = nil
 
     local scene_name = obs.obs_source_get_name(scenesource)
-    print(label .. ' get_preset_info for "' .. scene_name .. '"')
+    debug_print(label .. ' get_preset_info for "' .. scene_name .. '"')
 
     local scene = obs.obs_scene_from_source(scenesource)
     local items = obs.obs_scene_enum_items(scene)
@@ -316,7 +322,7 @@ function get_preset_info(label, scenesource)
         if preset ~= nil then
             local preset_data = camera_presets[preset]
             if preset_data then
-                print('   preset key is "' .. item_name .. '"')
+                debug_print('   preset key is "' .. item_name .. '"')
                 source_name = item_name
                 cam = preset_data.camera
                 num = preset_data.preset
@@ -334,7 +340,7 @@ end
 -- Handle OBS_FRONTEND_EVENT_PREVIEW_SCENE_CHANGED,
 -- which is also generated with OBS_FRONTEND_EVENT_SCENE_CHANGED
 function do_scene_change(label)
-    print('do_scene_change ' .. label)
+    debug_print('do_scene_change ' .. label)
 
     -- Check Program scene first, since it controls what Preview can do
     local program_source_name = nil
@@ -345,7 +351,7 @@ function do_scene_change(label)
         local program_scene_name = obs.obs_source_get_name(scenesource)
         program_source_name, program_cam, program_num = get_preset_info("Program", scenesource)
         if program_source_name ~= nil then
-            print('Program: "' .. program_scene_name .. '" uses "' .. program_source_name ..
+            debug_print('Program: "' .. program_scene_name .. '" uses "' .. program_source_name ..
                   '" Cam(' .. program_cam .. ', ' .. program_num .. ')')
             set_camera_to(program_cam, program_num)
         end
@@ -358,7 +364,7 @@ function do_scene_change(label)
         local preview_scene_name = obs.obs_source_get_name(scenesource)
         local preview_source_name, preview_cam, preview_num = get_preset_info("Preview", scenesource)
         if preview_source_name == nil then
-            print('Preview: "' .. preview_scene_name .. '" not using PTZ.')
+            debug_print('Preview: "' .. preview_scene_name .. '" not using PTZ.')
         else
             -- Get the source associated with the key source in this scene
             -- so that we can enable or disable it
@@ -383,20 +389,20 @@ function do_scene_change(label)
             if (program_cam == nil) or (program_cam ~= preview_cam) then
                 -- Program scene isn't using a camera, or is using a different camera than Preview.
                 -- Move the Preview camera to preview settings. Show no banner.
-                print('Preview: "' .. preview_scene_name .. '" uses "' .. preview_source_name ..
+                debug_print('Preview: "' .. preview_scene_name .. '" uses "' .. preview_source_name ..
                       '" Cam(' .. preview_cam .. ', ' .. preview_num .. ')')
                 set_camera_to(preview_cam, preview_num)
                 obs.obs_source_set_enabled(preview_source, false)
             elseif program_num == preview_num then
                 -- Preview uses the same camera and preset as Program.
                 -- No adjustment needed, show no message
-                print('  Peview: "' .. preview_scene_name .. '" uses same Cam(' .. preview_cam .. ', ' .. preview_num .. ') as Program')
+                debug_print('  Peview: "' .. preview_scene_name .. '" uses same Cam(' .. preview_cam .. ', ' .. preview_num .. ') as Program')
                 obs.obs_source_set_enabled(preview_source, false)
             else
                 -- Preview uses the same camera as Program, but a different setting.
                 -- Camera will need to be adjusted when the Preview goes live.
                 -- Until then, show a message
-                print('Preview: "' .. preview_scene_name .. '" has to wait to use "' .. preview_source_name ..
+                debug_print('Preview: "' .. preview_scene_name .. '" has to wait to use "' .. preview_source_name ..
                       '" Cam(' .. preview_cam .. ', ' .. preview_num .. ')')
                 obs.obs_source_set_enabled(preview_source, true)
             end
@@ -414,7 +420,7 @@ function set_camera_to(camera, preset)
     if (last_preset == nil) or (last_preset ~= preset) then
         -- Either first time setting this camera, or preset has changed
         last_cam_setting[camera] = preset
-        print('Set camera ' .. camera .. ' to preset ' .. preset)
+        debug_print('Set camera ' .. camera .. ' to preset ' .. preset)
         send_command(camera, "gopreset&index=" .. preset)
     end
 end
@@ -440,7 +446,7 @@ end
 
 -- Send an HTTP GET request to the specified address and port
 function http_request(a_address, a_port, a_url)
-    print('Sending http_request "GET ' .. a_url .. '" to ' .. a_address .. ':' .. a_port)
+    debug_print('Sending http_request "GET ' .. a_url .. '" to ' .. a_address .. ':' .. a_port)
 
     local socket = assert(socket.create("inet", "stream", "tcp"))
     assert(socket:connect(a_address, a_port), "socket:connect failed")
@@ -455,7 +461,7 @@ function http_request(a_address, a_port, a_url)
     if chunk then
         local ix,iy = string.find(chunk, '\r\n')
         if ix then
-            print('Got ' .. string.len(chunk) .. ' bytes: "' .. string.sub(chunk, 1, ix-1) .. '"')
+            debug_print('Got ' .. string.len(chunk) .. ' bytes: "' .. string.sub(chunk, 1, ix-1) .. '"')
         end
 
         ix,iy = string.find(chunk, 'Content%-Type%: application%/json')
@@ -463,7 +469,7 @@ function http_request(a_address, a_port, a_url)
             -- Get the json data, or at least a chunk of it, to avoid
             -- rude session closures.
             chunk = assert(socket:receive(), "socket:receive failed")
-            -- print('json data "' .. chunk .. '"')
+            -- debug_print('json data "' .. chunk .. '"')
         end
     end
     assert(socket:close())
@@ -473,7 +479,7 @@ end
 local delayed_camera = nil
 local delayed_command = nil
 function timer_callback()
-    print('in delayed_command')
+    debug_print('in delayed_command')
     if delayed_command then
         send_command(delayed_camera, delayed_command)
         delayed_camera = nil
@@ -487,7 +493,7 @@ function send_pulse_command(command)
     -- TODO: add support for multiple camera
     local camera = 1
 
-    print('send_pulse_command "' .. command .. '"')
+    debug_print('send_pulse_command "' .. command .. '"')
     send_command(camera, command .. '1')
     delayed_camera = camera
     delayed_command = command .. '0'
@@ -495,38 +501,38 @@ function send_pulse_command(command)
 end
 
 function up_button_clicked(props, p)
-    print("in up_button_clicked")
+    debug_print("in up_button_clicked")
     send_pulse_command( "up" )
 end
 
 function down_button_clicked(props, p)
-    print("in down_button_clicked")
+    debug_print("in down_button_clicked")
     send_pulse_command( "down" )
 end
 
 function left_button_clicked(props, p)
-    print("in left_button_clicked")
+    debug_print("in left_button_clicked")
     send_pulse_command( "left" )
 end
 
 function right_button_clicked(props, p)
-    print("in right_button_clicked")
+    debug_print("in right_button_clicked")
     send_pulse_command( "right" )
 end
 
 function zoom_in_button_clicked(props, p)
-    print("in zoom_in_button_clicked")
+    debug_print("in zoom_in_button_clicked")
     send_pulse_command( "zoomin" )
 end
 
 function zoom_out_button_clicked(props, p)
-    print("in zoom_out_button_clicked")
+    debug_print("in zoom_out_button_clicked")
     send_pulse_command( "zoomout" )
 end
 
 function preset_button_clicked(props, p)
     -- TODO: add support for multiple cameras
-    print("in preset_button_clicked")
+    debug_print("in preset_button_clicked")
     send_command( 1, "gopreset&index=0" )
 end
 

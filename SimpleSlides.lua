@@ -31,13 +31,16 @@ Microsoft PowerToys to rescale all the images to 1280x720, eliminating the drop.
 
 obs = obslua
 
-version = "0.3"
+local version = "0.4"
+
+-- Set true to get debug printing
+local debug_print_enabled = false
 
 -- The name of our controlling Sources must begin with this string
-source_key = 'SimpleSlides:'
+local source_key = 'SimpleSlides:'
 
 -- We accept files with the following extensions (acceptable to the Image Source)
-allowed_filetypes = {
+local allowed_filetypes = {
     ["png"] = true,
     ["jpg"] = true,
     ["jpeg"] = true,
@@ -47,18 +50,18 @@ allowed_filetypes = {
     
 -- A table of slide show data, indexed by Source name.
 -- Each entry contains a sorted list of filenames, and the index of the current slide.
-slide_shows = {}
+local slide_shows = {}
 
 -- The currently active slideshow: hotkeys and buttons apply to this one
-active_source_name  = ""
+local active_source_name  = ""
 
-hotkey_reset_id    = obs.OBS_INVALID_HOTKEY_ID
-hotkey_next_id     = obs.OBS_INVALID_HOTKEY_ID
-hotkey_previous_id = obs.OBS_INVALID_HOTKEY_ID
+local hotkey_reset_id    = obs.OBS_INVALID_HOTKEY_ID
+local hotkey_next_id     = obs.OBS_INVALID_HOTKEY_ID
+local hotkey_previous_id = obs.OBS_INVALID_HOTKEY_ID
 
 -- script_description returns the description shown to the user
 function script_description()
-    print("in script_description")
+    debug_print("in script_description")
     return '<h2>SimpleSlides Version ' .. version ..'</h2>' ..
            [[<p>Use an Image Source whose name begins with "SimpleSlides:" to
             display sequential image files from a directory, creating a simple
@@ -84,10 +87,18 @@ function script_description()
 end
 
 ----------------------------------------------------------
+-- Log a message if debugging is enabled
+function debug_print(a_string)
+    if debug_print_enabled then
+        print(a_string)
+    end
+end
+
+----------------------------------------------------------
 -- script_properties defines the properties that the user
 -- can change for the entire script module itself
 function script_properties()
-    print("in script_properties")
+    debug_print("in script_properties")
     
     local props = obs.obs_properties_create()
     
@@ -100,7 +111,7 @@ function script_properties()
                 local name = obs.obs_source_get_name(source)
                 ix,len = string.find(name, source_key)
                 if ix == 1 then
-                    print( 'script_properties adding source "' .. name .. '"')
+                    debug_print( 'script_properties adding source "' .. name .. '"')
                     obs.obs_property_list_add_string(p, name, name)
                 end
             end
@@ -171,18 +182,18 @@ end
 
 -- script_update is called when script settings are changed
 function script_update(settings)
-    print('in script_update')
+    debug_print('in script_update')
 end
 
 -- script_defaults is called to set the default settings
 function script_defaults(settings)
-    print("in script_defaults")
+    debug_print("in script_defaults")
 end
 
 -- script_save is called when the script is saved
 -- We save our hotkey assignments
 function script_save(settings)
-    print("in script_save")
+    debug_print("in script_save")
 
     local save_array = obs.obs_hotkey_save(hotkey_reset_id)
     obs.obs_data_set_array(settings, "reset_hotkey", save_array)
@@ -199,7 +210,8 @@ end
 
 -- script_load is called on startup
 function script_load(settings)
-    print("in script_load")
+    print("SimpleSlides version " .. version)
+
     obs.obs_frontend_add_save_callback(on_save)
     obs.obs_frontend_add_event_callback(handle_frontend_event)
 
@@ -226,14 +238,14 @@ function script_load(settings)
 end
 
 function script_unload()
-    print("in script_unload")
+    debug_print("in script_unload")
 end
 
 -- on_save(loading) is called at startup and when a scene collection is loaded.
 -- on_save(saving) is called when anything in a scene_collection is changed, 
 -- just before a new scene collection is loaded, and during showdown.
 function on_save(save_data, saving, private_data)
-	print( "on_save(" .. (saving and "saving)" or "loading)"))
+	debug_print( "on_save(" .. (saving and "saving)" or "loading)"))
 	if not saving then
         -- TODO: loading a new scene-set should wipe all slideshow data.
         select_slideshow("on_save(load)")
@@ -247,13 +259,13 @@ end
 function handle_frontend_event(event)
 	if event == obs.OBS_FRONTEND_EVENT_SCENE_CHANGED then
         -- get a preview event before this anyway, so avoid duplicate action
-        print("OBS_FRONTEND_EVENT_SCENE_CHANGED")
+        debug_print("OBS_FRONTEND_EVENT_SCENE_CHANGED")
     elseif event == obs.OBS_FRONTEND_EVENT_PREVIEW_SCENE_CHANGED then
         select_slideshow("OBS_FRONTEND_EVENT_PREVIEW_SCENE_CHANGED")
 	elseif event == obs.OBS_FRONTEND_EVENT_EXIT then
-	   print("OBS_FRONTEND_EVENT_EXIT")
+	   debug_print("OBS_FRONTEND_EVENT_EXIT")
 	elseif event == obs.OBS_FRONTEND_EVENT_FINISHED_LOADING then
-	   print("OBS_FRONTEND_EVENT_FINISHED_LOADING")
+	   debug_print("OBS_FRONTEND_EVENT_FINISHED_LOADING")
     end
 end
 
@@ -298,9 +310,9 @@ end
 -- If we don't have slideshow data for special_image_name, create it now
 function create_slideshow_if_needed(special_image_name)
     if slide_shows[special_image_name] then
-        print('Slideshow exists for "' .. special_image_name .. '"')
+        debug_print('Slideshow exists for "' .. special_image_name .. '"')
     else
-        print('Creating slideshow for "' .. special_image_name .. '"')
+        debug_print('Creating slideshow for "' .. special_image_name .. '"')
 
         local show = {}
         
@@ -320,7 +332,7 @@ function create_slideshow_if_needed(special_image_name)
                 
                 local path, name, extension
                 path, name, extension = splitpath(filespec)
-                print('Filespec="' .. filespec .. '" path="' .. path .. '" name="' .. name .. '" ext="' .. extension .. '"')
+                debug_print('Filespec="' .. filespec .. '" path="' .. path .. '" name="' .. name .. '" ext="' .. extension .. '"')
 
                 local filenames = {}
                 local dir = obslua.os_opendir(path)
@@ -332,7 +344,7 @@ function create_slideshow_if_needed(special_image_name)
                         xpath, name, extension = splitpath(entry.d_name)
 
                         if allowed_filetypes[string.lower(extension)] then
-                            -- print('  Image file="' .. entry.d_name .. '"')
+                            -- debug_print('  Image file="' .. entry.d_name .. '"')
                             table.insert(filenames, path .. entry.d_name)
                         end
                     end
@@ -360,18 +372,18 @@ function get_key_source(label, scenesource)
 
     if scenesource ~= nil then
         local scene_name = obs.obs_source_get_name(scenesource)
-        print(label .. ' get_key_source for "' .. scene_name .. '"')
+        debug_print(label .. ' get_key_source for "' .. scene_name .. '"')
 
         local scene = obs.obs_scene_from_source(scenesource)
         local items = obs.obs_scene_enum_items(scene)
         for i, item in pairs(items) do
             local item_source = obs.obs_sceneitem_get_source(item)
             local item_name = obs.obs_source_get_name(item_source)
-            -- print( '  ' .. label .. ' "' .. scene_name .. '" source "' .. item_name .. '"')
+            -- debug_print( '  ' .. label .. ' "' .. scene_name .. '" source "' .. item_name .. '"')
             if obs.obs_source_get_id(item_source) == "image_source" then
                 ix,len = string.find(item_name, source_key)
                 if ix == 1 then
-                    print( '  ' .. label .. ' "' .. scene_name .. '" has "' .. item_name .. '"')
+                    debug_print( '  ' .. label .. ' "' .. scene_name .. '" has "' .. item_name .. '"')
                     retval = item_name
                     break
                 end
@@ -387,7 +399,7 @@ end
 -- Called after save or load, and for OBS_FRONTEND_EVENT_PREVIEW_SCENE_CHANGED,
 -- which is also called on scene activation
 function select_slideshow(label)
-    print('select_slideshow ' .. label)
+    debug_print('select_slideshow ' .. label)
 
     -- no show active unless we find one
     local desired_source_name = ''
@@ -414,7 +426,7 @@ function select_slideshow(label)
 end
 
 function do_slide(label, action)
-    print('do_slide ' .. label .. ' action ' .. action)
+    debug_print('do_slide ' .. label .. ' action ' .. action)
 
     if active_source_name ~= '' then
         show = slide_shows[active_source_name]
@@ -452,7 +464,7 @@ function do_slide(label, action)
                 else
                     current_filename = obs.obs_data_get_string(nowSettings, "file") 
                     obs.obs_data_release(nowSettings)
-                    -- print( "Old file for " .. active_source_name .. ' is ' .. current_filename)
+                    -- debug_print( "Old file for " .. active_source_name .. ' is ' .. current_filename)
                 end
                 
                 if new_filename and (new_filename ~= current_filename) then
@@ -488,7 +500,7 @@ end
 function reset(pressed)
     if pressed and (active_source_name ~= '') then
         -- Delete the current slideshow, to force a refresh of the file list
-        print("Deleting slideshow for " .. active_source_name)
+        debug_print("Deleting slideshow for " .. active_source_name)
         slide_shows[active_source_name] = nil
         create_slideshow_if_needed(active_source_name)
     end
