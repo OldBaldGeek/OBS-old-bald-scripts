@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<head>
+<title>Cabrini Swiss Army Dock</title>
+<meta charset="utf-8">
+</head>
+
+<body onload="loaded()">
+    <link rel="stylesheet" type="text/css" href="cabrini-dock.css">
+
+    <div class="grid-container">
+        <div class="grid-child">
+            <span class="Title" id="Title0">Camera 1</span>
+            <span class="ProgPrev" id="Preview0">&nbsp;&nbsp;Preview</span>
+            <span class="ProgPrev" id="Program0">&nbsp;&nbsp;Program</span>
+            <div class="PanTiltZoomPanel">
+                <div class="PTZPanTiltCenter"></div>
+                <div class="PTZUp" onmousedown="do_action(0, 'up', 'start')" onmouseup="do_action(0, 'up', 'stop');"></div>
+                <div class="PTZDown" onmousedown="do_action(0, 'down', 'start')" onmouseup="do_action(0, 'down', 'stop');"></div>
+                <div class="PTZLeft" onmousedown="do_action(0, 'left', 'start')" onmouseup="do_action(0, 'left', 'stop');"></div>
+                <div class="PTZRight" onmousedown="do_action(0, 'right', 'start')" onmouseup="do_action(0, 'right', 'stop');"></div>
+
+                <div class="PTZZoomIn" onmousedown="do_action(0, 'zoomin', 'start')" onmouseup="do_action(0, 'zoomin', 'stop');"></div>
+                <div class="PTZZoomOut" onmousedown="do_action(0, 'zoomout', 'start')" onmouseup="do_action(0, 'zoomout', 'stop');"></div>
+                <div class="PresetButtons">
+                    <input  type="checkbox" id="Edit0" onclick="do_edit(0, this);" />
+                    <label for="Edit0">Edit</label>
+                    <div id="Hide0">
+                        <button class="PresetButton" onclick="do_show_preset(0)">SHOW</button>
+                        <button class="PresetButton" onclick="do_set_preset(0)">SET</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="PresetArea">
+                <p class="Status" id='Status0'>Presets</p>
+                <select class="Presets" id="Presets0" size="16" onchange="do_select(0, this)"></select>
+            </div>
+        </div>
+
+        <div class="grid-child">
+            <span class="Title" id="Title1">Camera 2</span>
+            <span class="ProgPrev" id="Preview1">&nbsp;&nbsp;Preview</span>
+            <span class="ProgPrev" id="Program1">&nbsp;&nbsp;Program</span>
+            <div class="PanTiltZoomPanel">
+                <div class="PTZPanTiltCenter"></div>
+                <div class="PTZUp" onmousedown="do_action(1, 'up', 'start')" onmouseup="do_action(1, 'up', 'stop');"></div>
+                <div class="PTZDown" onmousedown="do_action(1, 'down', 'start')" onmouseup="do_action(1, 'down', 'stop');"></div>
+                <div class="PTZLeft" onmousedown="do_action(1, 'left', 'start')" onmouseup="do_action(1, 'left', 'stop');"></div>
+                <div class="PTZRight" onmousedown="do_action(1, 'right', 'start')" onmouseup="do_action(1, 'right', 'stop');"></div>
+
+                <div class="PTZZoomIn" onmousedown="do_action(1, 'zoomin', 'start')" onmouseup="do_action(1, 'zoomin', 'stop');"></div>
+                <div class="PTZZoomOut" onmousedown="do_action(1, 'zoomout', 'start')" onmouseup="do_action(1, 'zoomout', 'stop');"></div>
+                <div class="PresetButtons">
+                    <input  type="checkbox" id="Edit1" onclick="do_edit(1, this);" />
+                    <label for="Edit1">Edit</label>
+                    <div id="Hide1">
+                        <button class="PresetButton" onclick="do_show_preset(1)">SHOW</button>
+                        <button class="PresetButton" onclick="do_set_preset(1)">SET</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="PresetArea">
+                <p class="Status" id='Status1'>Presets</p>
+                <select class="Presets" id="Presets1" size="16" onchange="do_select(1, this)"></select>
+            </div>
+        </div>
+
+        <div class="grid-child">
+            <span class="Title">Slides</span>
+            <div>
+                <button class="SlideButton" style="margin-top:5px;" onclick="do_slides('Toggle');">Toggle Slide View</button>
+                <button class="SlideButton" onclick="do_slides('Next');">Next Slide</button>
+                <button class="SlideButton" onclick="do_slides('Previous');">Previous Slide</button>
+                <button class="SlideButton" onclick="do_slides('Reload');">Reload Slides</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="text/javascript" src="camera-data.js"></script>
+    <script type="text/javascript" src="cabrini-dock.js"></script>
+</body>
+</html>
