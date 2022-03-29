@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<head>
+<title>Camera Control</title>
+<meta charset="utf-8">
+</head>
+<body onload="loaded()">
+    <link rel="stylesheet" type="text/css" href="camera-control.css">
+    <script type="text/javascript" src="camera-data.js"></script>
+    <script type="text/javascript" src="camera-control.js"></script>
+
+    <div id="PanTiltZoomPanel">
+        <div id="PTZPanTiltCenter"></div>
+        <div id="PTZUp" onmousedown="do_action('up', 'start')" onmouseup="do_action('up', 'stop');"></div>
+        <div id="PTZDown" onmousedown="do_action('down', 'start')" onmouseup="do_action('down', 'stop');"></div>
+        <div id="PTZLeft" onmousedown="do_action('left', 'start')" onmouseup="do_action('left', 'stop');"></div>
+        <div id="PTZRight" onmousedown="do_action('right', 'start')" onmouseup="do_action('right', 'stop');"></div>
+
+        <div id="PTZZoomIn" onmousedown="do_action('zoomin', 'start')" onmouseup="do_action('zoomin', 'stop');"></div>
+        <div id="PTZZoomOut" onmousedown="do_action('zoomout', 'start')" onmouseup="do_action('zoomout', 'stop');"></div>
+        <div id="PresetButtons">
+            <button id="PresetButton" onclick="change_page('camera-control-page2.html');">-> 2</button>
+        </div>
+    </div>
+
+    <p id='Status'>Presets</p>
+
+    <select name="presets" id="Presets" size="16" onchange="do_select(this)">
+    </select>  
+</body>
+</html>

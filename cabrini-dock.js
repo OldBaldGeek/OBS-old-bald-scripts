@@ -1,6 +1,6 @@
 // All in one control dock for streaming at Cabrini by John Hartman
 // - Aver camera control
-// - slide show
+// - slide show clickable buttons (alternative to hotkeys used by script)
 
 // Default address of the AVER camera server, in case we can't read the configuration file
 var g_aver_address = 'localhost:36680';
@@ -11,6 +11,10 @@ var g_websocket_address = "127.0.0.1:4444";
 // Names of the OBS camera sources
 var g_cam_name0 = "Camera 1";
 var g_cam_name1 = "Camera 2";
+
+// Name of the slideshow source
+var g_slideshow_source_name = "SimpleSlides: music";
+
 
 //==============================================================================
 // String shown above the preset lists when no action is in progress
@@ -254,6 +258,8 @@ function connectWebsocket()
         sendPayload( {
             "message-id": "get-preview-scene",
             "request-type": "GetPreviewScene" } );
+
+        pollSlideshow();
     };
 
     websocket.onclose = function (evt)
@@ -388,6 +394,10 @@ function handleResponse(data)
         case "did-hotkey":
             // console.log('Did a hotkey.');
             break;
+            
+        case "get-slideshow-settings":
+            processSlideshowSettings(data);
+            break;
 
         default:
             console.error('handleResponse got unknown event.', data);
@@ -462,4 +472,49 @@ function do_slides(a_action)
 //
 //            document.getElementById('slidePath').innerHTML = path;
 //            break;
+//
+var slideShowTimer = 0;
+var slideCount = 0;
+var lastSlide = "";
+function processSlideshowSettings(a_data)
+{
+    if (a_data.sourceSettings.file != lastSlide) {
+        console.log("Slide " + slideCount + " " + a_data.sourceSettings.file);
+        lastSlide = a_data.sourceSettings.file;
 
+        var img = new Image(); // 1280, 720);   // Create new img element
+        img.addEventListener('load', function() {
+            console.log("Draw image here for " + lastSlide);
+            console.log("Width=" + img.width + " NatWidth=" + img.naturalWidth);
+
+            // var div = document.getElementById('SlideImage');
+            // 320:180
+            // 400:225
+            // 480:270
+            // 560:315
+            // Wider canvas stretches the BUTTONS as well
+            // Limit width, and at least see the left end of the slide
+            var canvas = document.getElementById('SlideCanvas');
+            canvas.width = 400;
+            canvas.height = 315;
+            console.log("Canvas Width=" + canvas.width + " height=" + canvas.height);
+
+            var ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, 1280, 720, -20, -20, 560, 315);
+        }, false);
+        img.src = "file://" + lastSlide;
+    }
+    slideCount += 1;
+
+    if (slideShowTimer == 0) {
+        slideShowTimer = setInterval(pollSlideshow, 5000);
+    }
+}
+
+function pollSlideshow()
+{
+    sendPayload( {
+        "message-id": "get-slideshow-settings",
+        "request-type": "GetSourceSettings",
+        "sourceName": g_slideshow_source_name } );
+}

@@ -1,29 +1,20 @@
 /* CSS for OBS plugin to control an Aver VC520+ camera */
 body {
-    /* Color to match OBS Dark Theme */
+    /* Color to match OBS Dark Mode */
     background: #3A393A;
     color: white;
     font-family: arial;
 }
 
-.grid-container {
-    display: grid;
-    grid-template-columns: 1fr 1fr 2fr;
-}
-
-.grid-child {
-    border-right: 3px solid #4A494A;
-}
-
-.PanTiltZoomPanel {
-    position: relative;
+#PanTiltZoomPanel {
+    position: absolute;
     top: 5px;
-    left: 3px;
-    width: 220px;
-    height: 95px;
+    left: 5px;
+    width: 210px;
+    height: 103px;
 }
 
-.PTZPanTiltCenter {
+#PTZPanTiltCenter {
     position: absolute;
     top: 32px;
     left: 37px;
@@ -33,7 +24,7 @@ body {
     z-index: 10;
 }
 
-.PTZUp {
+#PTZUp {
     position: absolute;
     top: 0px;
     left: 35px;
@@ -43,15 +34,15 @@ body {
     z-index: 9;
 }
 
-.PTZUp:hover {
+#PTZUp:hover {
     background: url("images/up_on.svg") no-repeat;
 }
 
-.PTZUp:active {
+#PTZUp:active {
     background: url("images/up_dw.svg") no-repeat;
 }
 
-.PTZDown {
+#PTZDown {
     position: absolute;
     top: 54px;
     left: 35px;
@@ -61,15 +52,15 @@ body {
     z-index: 9;
 }
 
-.PTZDown:hover {
+#PTZDown:hover {
     background: url("images/dw_on.svg") no-repeat;
 }
 
-.PTZDown:active {
+#PTZDown:active {
     background: url("images/dw_dw.svg") no-repeat;
 }
 
-.PTZLeft {
+#PTZLeft {
     position: absolute;
     top: 32px;
     left: 2px;
@@ -79,15 +70,15 @@ body {
     z-index: 9;
 }
 
-.PTZLeft:hover {
+#PTZLeft:hover {
     background: url("images/left_on.svg") no-repeat;
 }
 
-.PTZLeft:active {
+#PTZLeft:active {
     background: url("images/left_dw.svg") no-repeat;
 }
 
-.PTZRight {
+#PTZRight {
     position: absolute;
     top: 32px;
     left: 58px;
@@ -97,15 +88,15 @@ body {
     z-index: 9;
 }
 
-.PTZRight:hover {
+#PTZRight:hover {
     background: url("images/right_on.svg") no-repeat;
 }
 
-.PTZRight:active {
+#PTZRight:active {
     background: url("images/right_dw.svg") no-repeat;
 }
 
-.PTZZoomIn {
+#PTZZoomIn {
     background: url("images/Zoom_in_up.svg") no-repeat;
     position: absolute;
     top: 1px;
@@ -114,15 +105,15 @@ body {
     height: 48px;
 }
 
-.PTZZoomIn:hover {
+#PTZZoomIn:hover {
     background: url("images/Zoom_in_on.svg") no-repeat;
 }
 
-.PTZZoomIn:active {
+#PTZZoomIn:active {
     background: url("images/Zoom_in_dw.svg") no-repeat;
 }
 
-.PTZZoomOut {
+#PTZZoomOut {
     background: url("images/Zoom_out_up.svg") no-repeat;
     position: absolute;
     top: 45px;
@@ -131,96 +122,42 @@ body {
     height: 48px;
 }
 
-.PTZZoomOut:hover {
+#PTZZoomOut:hover {
     background: url("images/Zoom_out_on.svg") no-repeat;
 }
 
-.PTZZoomOut:active {
+#PTZZoomOut:active {
     background: url("images/Zoom_out_dw.svg") no-repeat;
 }
 
-.PresetButtons {
+#PresetButtons {
     position: absolute;
-    top: 0px;
+    top: 12px;
     left: 153px;
-    width: 60px;
+    width: 55px;
+    background: #4CFF4C;
 }
 
-.PresetButton {
+#PresetButton {
     background: #4C4C4C;
-    height: 27px;
-    width: 100%;
-    border-radius: 10px;
-    margin-bottom: 1px;
+    width: 58px;
     color: white;
 }
 
-.PresetButton:hover {
-    background: #7A797A;
-}
-
-.PresetButton:focus {
-    outline: none;
-}
-
-.PresetArea {
-    position: relative;
-    height: 300px;
-    margin-left: 3px;
-    margin-right: 3px;
-    margin-bottom: 3px;
-}
-
-.Status {
+#Status {
     position: absolute;
-    top: 0px;
-    left: 0px;
+    top: 98px;
+    left: 5px;
     color: white;
     font-size: 80%;
 }
 
-.Presets {
+#Presets {
     position: absolute;
-    top: 10%;
-    left: 0px;
-    width: 100%;
-    height: 90%;
+    top: 130px;
+    left: 5px;
+    width: 200px;
     background: #4C4C4C;
     color: white;
-    /* scrollbar-color: dark; doesn't see to have any effect in dock. May be Firefox only */
-}
-
-.SlideButton {
-    background: #585758;
-    width: 45%;
-    height: 30px;
-    border-radius: 10px;
-    margin-left: 3px;
-    margin-bottom: 2px;
-    color: white;
-}
-
-.SlideButton:hover {
-    background: #7A797A;
-}
-
-.SlideButton:focus {
-    outline: none;
-}
-
-.Title {
-    font-weight: bold;
-    margin-left: 5px;
-    margin-top: 5px;
-}
-
-.ProgPrev {
-    color: #00FF00;
-}
-
-.SlideImage {
-    width: 100%;
-    height: 100%;
-    margin-left: 3px;
-    margin-bottom: 2px;
+    scrollbar-color: dark;
 }
