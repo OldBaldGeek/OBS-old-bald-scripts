@@ -1,4 +1,7 @@
 // Simple Aver camera control by John Hartman
+//
+// If there is a query string "camera=XXX" in our URL, use XXX as our camera
+// Else use the default camera
 
 // Default, in case we can't read json file written by our script
 var a_address = 'localhost:36680';
@@ -163,7 +166,6 @@ function do_select(a_select)
 {
     let option = a_select.options[a_select.selectedIndex]
     do_preset(option.value);
-    showResult('Selected preset: ' + option.text, 2000);
 
     // Remove the selection, since the camera may not stay on that preset
     a_select.selectedIndex = -1; 
