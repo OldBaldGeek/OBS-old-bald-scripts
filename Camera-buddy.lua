@@ -33,6 +33,9 @@ local ip_address_and_port = '127.0.0.1:36680'
 local camera_presets = {}
 local camera_selectors = {}
 
+local ip_address = nil
+local ip_port = nil
+
 -- Flag to hold off camera motion until we are fully loaded
 local load_complete = false
 
@@ -43,6 +46,9 @@ local last_cam_setting = {}
 local ptzs_we_made = {}
 
 local hotkey_transition_id = obs.OBS_INVALID_HOTKEY_ID
+
+-- Duration (editable) of PTZ pulses
+local pulse_duration = 100
 
 -- Initial settings for our magic sources
 local PTZ_JSON_DATA = [[
@@ -99,6 +105,7 @@ function script_properties()
     debug_print("in script_properties")
     
     local props = obs.obs_properties_create()
+    obs.obs_properties_add_int(props, "pulse_duration",  "Pulse duration msec", 1, 1000, 10)
     obs.obs_properties_add_button(props, "up_button",    " UP ", up_button_clicked)
     obs.obs_properties_add_button(props, "down_button",  "DOWN", down_button_clicked)
     obs.obs_properties_add_button(props, "left_button",  "LEFT", left_button_clicked)
@@ -112,6 +119,8 @@ end
 
 function script_update(settings)
     debug_print('in script_update')
+
+    pulse_duration = obs.obs_data_get_int(settings, "pulse_duration")
 end
 
 function script_save(settings)
@@ -429,19 +438,21 @@ end
 -- This is synchronous, so may cause frames to be dropped if the camera's
 -- response is delayed (or non-existant), but seems to work for a USB camera.
 function send_command(camera, command)
-    local ix = string.find(ip_address_and_port, ':')
-    local address = string.sub(ip_address_and_port, 1, ix-1)
-    local port = string.sub(ip_address_and_port, ix+1)
+    if ip_address == nil then
+        local ix = string.find(ip_address_and_port, ':')
+        ip_address = string.sub(ip_address_and_port, 1, ix-1)
+        ip_port = string.sub(ip_address_and_port, ix+1)
+    end
 
     -- Get protocol info for the camera
     local selector = camera_selectors[camera]
     if selector == nil then
         print('ERROR: no camera selector for "' .. camera .. '"')
     else
-        http_request(address, port, '/list?action=set&uvcid=' .. selector.serialnumber)
+        http_request(ip_address, ip_port, '/list?action=set&uvcid=' .. selector.serialnumber)
     end
 
-    http_request(address, port, '/ptz?action=' .. command)
+    http_request(ip_address, ip_port, '/ptz?action=' .. command)
 end
 
 -- Send an HTTP GET request to the specified address and port
@@ -493,11 +504,14 @@ function send_pulse_command(command)
     -- TODO: add support for multiple camera
     local camera = 1
 
+    -- For greater duration accuracy, we might try one or both of
+    -- * Keep the socket open during the pulse
+    -- * Start the timer BEFORE the first send_command
     debug_print('send_pulse_command "' .. command .. '"')
     send_command(camera, command .. '1')
     delayed_camera = camera
     delayed_command = command .. '0'
-    obs.timer_add(timer_callback, 100)
+    obs.timer_add(timer_callback, pulse_duration)
 end
 
 function up_button_clicked(props, p)
