@@ -1,154 +1,13 @@
 -- AutoStream.lua - simple automated streaming
 
 local obs = obslua
-local version = "0.2"
+local version = "0.3"
 
 -- Edited/persisted values
 local test_string = ''
 
-function cmd_profile(tail)
-    obs.obs_frontend_set_current_profile(tail)
-    local newProfile = obs.obs_frontend_get_current_profile()
-    if tail == newProfile then
-        print('Change profile to "' .. tail .. '"')
-    else
-        print('Can\'t change profile to "' .. tail ..
-              '". Profile is "' .. newProfile .. '"')
-    end
-end
-
-function cmd_preview(tail)
-    new_scene = obs.obs_get_scene_by_name(tail)
-    if new_scene == nil then
-        print('No scene called "' .. tail .. '"')
-    else
-        print('Change preview scene to "' .. tail .. '"')
-        obs.obs_frontend_set_current_preview_scene( obs.obs_scene_get_source(new_scene))
-        obs.obs_scene_release(new_scene)
-    end
-end
-
-function cmd_program(tail)
-    new_scene = obs.obs_get_scene_by_name(tail)
-    if new_scene == nil then
-        print('No scene called "' .. tail .. '"')
-    else
-        print('Change program scene to "' .. tail .. '"')
-        obs.obs_frontend_set_current_scene( obs.obs_scene_get_source(new_scene))
-        obs.obs_scene_release(new_scene)
-    end
-end
-
-function cmd_hotkey(tail)
-    print('Send hotkey "' .. tail .. '"')
-
-    local combo = obs.obs_key_combination()
-    combo.modifiers = 0
-    combo.key = obs.obs_key_from_name(tail)
-    print(combo.key)
-    obs.obs_hotkey_inject_event(combo,false)
-    obs.obs_hotkey_inject_event(combo,true)
-    obs.obs_hotkey_inject_event(combo,false)
-end
-
-function cmd_ctl_hotkey(tail)
-    print('Send Ctrl + hotkey "' .. tail .. '"')
-
-    local combo = obs.obs_key_combination()
-    combo.modifiers = obs.INTERACT_CONTROL_KEY
-    combo.key = obs.obs_key_from_name(tail)
-    print(combo.key)
-    obs.obs_hotkey_inject_event(combo,false)
-    obs.obs_hotkey_inject_event(combo,true)
-    obs.obs_hotkey_inject_event(combo,false)
-end
-
-function cmd_streamkey(tail)
-    local service = obs.obs_frontend_get_streaming_service()
-
-    local name = obs.obs_service_get_name(service)
-    local key = obs.obs_service_get_key(service)
-    -- obs_frontend_get_streaming_service says "returns new reference", but
-    -- calling obs.obs_service_release(service) causes a crash on second get
-    print( 'Service is "' .. name .. '"  Key is "' .. key .. '"')
-end
-
-function cmd_transitiontime(tail)
-    print('Change transition time to "' .. tail .. '"')
-    obs.obs_frontend_set_transition_duration( tonumber(tail) )
-end
-
-function cmd_transition(tail)
-    print('Transition, taking ' .. obs.obs_frontend_get_transition_duration() .. ' msec' )
-    obs.obs_frontend_preview_program_trigger_transition()
-end
-
-function cmd_audiolevel(tail)
-    local pos, spc, value = tail:match('()(%s+)(-*%d+)$')
-    if pos ~= nil and value ~= nil then
-        local source_name = tail:sub(1,pos-1)
-        local source = obs.obs_get_source_by_name(source_name)
-        if source then
-            print('Set audio level of "' .. source_name .. '" to ' .. value .. ' dB')
-
-            volume = 10.0 ^ (value/20)
-            if volume > 1.0 then
-                volume = 1.0
-            end
-
-            obs.obs_source_set_volume(source, volume)
-            obs.obs_source_release(source)
-        else
-            print('No audio source "' .. source_name .. '"')
-        end
-    end
-end
-
-function cmd_date(tail)
-    -- seconds 1658696886
-    local text = os.time()
-    print('raw time ' .. text)
-
-    -- Sun Jul 24 16:08:06 2022
-    text = os.date()
-    print('raw date' .. text)
-    
-    -- July 24, 2022.  16:08:06
-    text = os.date('%B %d, %Y.  %H:%M:%S')
-    print('formatted ' .. text)
-
-    local now = os.date('*t')
-    print('table ' .. now.year .. ' ' .. now.month .. ' ' .. now.day)
-    print('      ' .. now.hour .. ':' .. now.min .. ':' .. now.sec)
-end
-
-function cmd_readfile(tail)
-    path = script_path() .. tail
-    infile = io.open(path, 'r')
-    if infile then
-        print("Reading " .. path)
-        local raw = infile:read("*a")
-        infile:close()
-        print(raw)
-    else
-        print('No file "' .. path .. '"')
-    end
-end
-
-
--- Table of commands
+-- Table of commands (initialized after each handler definition)
 local cmd_table = {}
-cmd_table['profile']        = {'Change profile to xxxx', cmd_profile}
-cmd_table['preview']        = {'Change preview to xxxx', cmd_preview}
-cmd_table['program']        = {'Change program to xxxx', cmd_program}
-cmd_table['hotkey']         = {'Send hotkey xxxx',       cmd_hotkey}
-cmd_table['ctl_hotkey']     = {'Send hotkey Ctrl+xxxx',  cmd_ctl_hotkey}
-cmd_table['streamkey']      = {'Show streamkey',         cmd_streamkey}
-cmd_table['transitiontime'] = {'Set transition time to xxxx', cmd_transitiontime}
-cmd_table['transition']     = {'Do transition',               cmd_transition}
-cmd_table['audiolevel']     = {'Set audio level of xxxx to yyy dB', cmd_audiolevel}
-cmd_table['date']           = {'Play with date and time',     cmd_date}
-cmd_table['readfile']       = {'Read file xxxx',         cmd_readfile}
 
 -- Description displayed in the Scripts dialog window
 function script_description()
@@ -197,7 +56,6 @@ function script_properties()
                 else
                     command = test_string:sub(1, c0-1)
                     tail = test_string:sub(cx):match'^%s*(.*)'
-                    print('Command="' .. command .. '" tail="' .. tail .. '"')
                 end
 
                 -- Make sure this can work on a timer callback
@@ -206,7 +64,6 @@ function script_properties()
 
                 local entry = cmd_table[command]
                 if entry ~=nil then
-                    print('Command "' .. entry[1] .. '"')
                     entry[2](tail)
                 else
                     print('Unknown command "' .. command .. '"')
@@ -219,6 +76,193 @@ function script_properties()
 
     return props
 end
+
+
+cmd_table['profile'] = {'Change profile to xxxx', 
+    function(tail)
+        obs.obs_frontend_set_current_profile(tail)
+        local newProfile = obs.obs_frontend_get_current_profile()
+        if tail == newProfile then
+            print('Change profile to "' .. tail .. '"')
+        else
+            print('Can\'t change profile to "' .. tail ..
+                  '". Profile is "' .. newProfile .. '"')
+        end
+    end
+    }
+
+function cmd_preview(tail)
+    new_scene = obs.obs_get_scene_by_name(tail)
+    if new_scene == nil then
+        print('No scene called "' .. tail .. '"')
+    else
+        print('Change preview scene to "' .. tail .. '"')
+        obs.obs_frontend_set_current_preview_scene( obs.obs_scene_get_source(new_scene))
+        obs.obs_scene_release(new_scene)
+    end
+end
+cmd_table['preview'] = {'Change preview to xxxx', cmd_preview}
+
+function cmd_program(tail)
+    new_scene = obs.obs_get_scene_by_name(tail)
+    if new_scene == nil then
+        print('No scene called "' .. tail .. '"')
+    else
+        print('Change program scene to "' .. tail .. '"')
+        obs.obs_frontend_set_current_scene( obs.obs_scene_get_source(new_scene))
+        obs.obs_scene_release(new_scene)
+    end
+end
+cmd_table['program'] = {'Change program to xxxx', cmd_program}
+
+function cmd_hotkey(tail)
+    print('Send hotkey "' .. tail .. '"')
+
+    local combo = obs.obs_key_combination()
+    combo.modifiers = 0
+    combo.key = obs.obs_key_from_name(tail)
+    print(combo.key)
+    obs.obs_hotkey_inject_event(combo,false)
+    obs.obs_hotkey_inject_event(combo,true)
+    obs.obs_hotkey_inject_event(combo,false)
+end
+cmd_table['hotkey'] = {'Send hotkey xxxx', cmd_hotkey}
+
+function cmd_ctl_hotkey(tail)
+    print('Send Ctrl + hotkey "' .. tail .. '"')
+
+    local combo = obs.obs_key_combination()
+    combo.modifiers = obs.INTERACT_CONTROL_KEY
+    combo.key = obs.obs_key_from_name(tail)
+    print(combo.key)
+    obs.obs_hotkey_inject_event(combo,false)
+    obs.obs_hotkey_inject_event(combo,true)
+    obs.obs_hotkey_inject_event(combo,false)
+end
+cmd_table['ctl_hotkey'] = {'Send hotkey Ctrl+xxxx', cmd_ctl_hotkey}
+
+function cmd_streamkey(tail)
+    local service = obs.obs_frontend_get_streaming_service()
+
+    local name = obs.obs_service_get_name(service)
+    local key = obs.obs_service_get_key(service)
+    -- obs_frontend_get_streaming_service says "returns new reference", but
+    -- calling obs.obs_service_release(service) causes a crash on second get
+    print( 'Service is "' .. name .. '"  Key is "' .. key .. '"')
+end
+cmd_table['streamkey'] = {'Show streamkey', cmd_streamkey}
+
+function cmd_transitiontime(tail)
+    print('Change transition time to "' .. tail .. '"')
+    obs.obs_frontend_set_transition_duration( tonumber(tail) )
+end
+cmd_table['transitiontime'] = {'Set transition time to xxxx', cmd_transitiontime}
+
+function cmd_transition(tail)
+    print('Transition, taking ' .. obs.obs_frontend_get_transition_duration() .. ' msec' )
+    obs.obs_frontend_preview_program_trigger_transition()
+end
+cmd_table['transition'] = {'Do transition', cmd_transition}
+
+function cmd_audiolevel(tail)
+    local pos, value = tail:match('()%s+(-*%d+)$')
+    if pos ~= nil and value ~= nil then
+        local source_name = tail:sub(1,pos-1)
+        local source = obs.obs_get_source_by_name(source_name)
+        if source then
+            print('Set audio level of "' .. source_name .. '" to ' .. value .. ' dB')
+
+            volume = 10.0 ^ (value/20)
+            if volume > 1.0 then
+                volume = 1.0
+            end
+
+            obs.obs_source_set_volume(source, volume)
+            obs.obs_source_release(source)
+        else
+            print('No audio source "' .. source_name .. '"')
+        end
+    end
+end
+cmd_table['audiolevel'] = {'Set audio level of xxxx to yyy dB', cmd_audiolevel}
+
+local monther = {January=1, Jan=1, February=2, Feb=2,
+                 March=3,   Mar=3, April=4,    Apr=4,
+                 May=5,              June=6,     Jun=6,
+                 July=7,    Jul=7, August=8,   Aug=8,
+                 September=9,Sep=9,October=10, Oct=10,
+                 November=11,Nov=11,December=12,Dec=12}
+
+function cmd_date(tail)
+    -- Parse the tail as a date
+    -- July 24, 2022
+    local month, day, year = tail:match('(%a+)%s+(%d+),*%s*(%d+)')
+    if month and monther[month] then
+        -- Simplest is year*10000 + month*100 + day
+        -- Numerical COMPARE is good, but subtraction doesn't give #days
+        month = monther[month]
+        local want_num = year*10000 + month*100 + day
+
+        local now = os.date('*t')
+        local now_num = now.year*10000 + now.month*100 + now.day
+        print('Want=' .. want_num.. '  Now=' .. now_num)
+        if now_num < want_num then
+            print('Before')
+        elseif now_num == want_num then
+            print('Now')
+        else
+            print('After')
+        end
+    else
+        print('Invalid date "' .. tail .. '"')
+    end
+
+    -- July 24, 2022
+    text = os.date('%B %d, %Y')
+    print('Today is ' .. text)
+end
+cmd_table['date'] = {'Wait for specified date', cmd_date}
+
+function cmd_time(tail)
+    -- Parse the tail as a time
+    -- 8:55
+    local hour, minute = tail:match('(%d+):(%d+)')
+    if hour then
+        local want_num = hour*100 + minute
+
+        local now = os.date('*t')
+        local now_num = now.hour*100 + now.min
+        print('Want=' .. want_num.. '  Now=' .. now_num)
+        if now_num < want_num then
+            print('Before')
+        elseif now_num == want_num then
+            print('Now')
+        else
+            print('After')
+        end
+    else
+        print('Invalid time "' .. tail .. '"')
+    end
+
+    -- 16:08:06
+    text = os.date('%H:%M')
+    print('Time is ' .. text)
+end
+cmd_table['time'] = {'Wait for specified time', cmd_time}
+
+function cmd_readfile(tail)
+    path = script_path() .. tail
+    infile = io.open(path, 'r')
+    if infile then
+        print("Reading " .. path)
+        local raw = infile:read("*a")
+        infile:close()
+        print(raw)
+    else
+        print('No file "' .. path .. '"')
+    end
+end
+cmd_table['readfile'] = {'Read file xxxx', cmd_readfile}
 
 local timed_command = nil
 local timed_tail = nil
