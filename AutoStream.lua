@@ -1,7 +1,11 @@
 -- AutoStream.lua - simple automated streaming
 
 local obs = obslua
-local version = "0.5"
+local version = '0.5'
+
+-- These names must match the source names used on the control scene
+local explainer_source  = 'Automatic Streamer - explainer'
+local explainer_actions = 'Automatic Streamer - actions'
 
 -- Edited/persisted values
 local command_file = ''             -- from filepath control
@@ -13,7 +17,6 @@ local error_flag = false            -- sticky error flag to stop execution
 local command_data = {}             -- array of lines from command file
 local command_index = 0             -- line number to execute in command_data
 local command_scene = 'none'        -- scene showing our progress
-local command_text  = ''            -- Text source in command_scene for results
 local time_command_started = 0      -- time_t that current command started
 
   local STATE_STOPPED = 0           -- Not running
@@ -24,7 +27,7 @@ local state = STATE_STOPPED
 
 local timer_interval_ms = 1000      -- timer poll interval
 local timer_active = false
-local log_lines = '1\n2\n3\n4\n5\n6\n7\n8\n9\n\10'
+local log_lines = '\n\n\n\n\n\n\n\n\n'
 
 -- Table of commands/handlers (initialized after each handler definition)
 local cmd_table = {}
@@ -36,6 +39,15 @@ function script_description()
            ]]
     return str
 end
+
+-- Text for "Explainer" text source. replace "%s" with actual filename
+local explainer_text = 
+[[When this scene is visible in Preview, commands from
+  "%s"
+will be executed to select scenes, set audio levels, and begin and end the stream.
+
+If you change Preview to another scene, automatic operation will be paused.
+Switching back to this scene will resume automatic operation.]]
 
 -- Set state variable, start or stop timer as appropriate
 -- STOPPED  Timer stopped
@@ -62,38 +74,24 @@ end
 -- Log an error, set error flag
 -- this may stop the command interpreter
 function set_error(a_text)
-    show_text('ERROR: ' .. a_text, true, 0x0000FF) -- RED: see note below
+    print('ERROR: ' .. a_text)
+
     error_flag = true
+    show_text('ERROR: ' .. a_text)
     
     if not continue_on_error then
         set_state(STATE_STOPPED)
+        show_text('STOPPED due to error')
     end
 
     return continue_on_error
 end
 
-
--- The OBS GDI+ source property editor shows #html color as #RRGGBB,
--- so red=255, green=0, blue=0 is shown as #FF0000
--- But the saved json gets 4278190335 = 0xFF0000FF, with red as the LAST byte,
--- and an extra FF on the top. You can edit the json to remove to top FF, and
--- it reads back just the same.
--- Lua needs to used this BGR format: red = 255 / 0x0000FF
-
--- Display a string on the control scene, or log if no control scene
-function show_text(text, temporary, color)
-    local source = obs.obs_get_source_by_name(command_text)
+-- Display a string on the control scene's "actions" source, or log if no such source
+function show_text(text, temporary)
+    local source = obs.obs_get_source_by_name(explainer_actions)
     if source ~= nil then
-        if color == nil then
-            color = 0x00FF00 -- GREEN: see note above
-        end
-
-        local old_data = obs.obs_source_get_settings(source)
-        local old_color = obs.obs_data_get_int(old_data, 'color')
-        obs.obs_data_release(old_data)
-
         local settings = obs.obs_data_create()
-        -- print('Text was ' .. old_color .. ' set "' .. text .. '" ' .. color .. '/' .. 1*color)
 
         if temporary then
             -- Show existing lines, plus this temporary line
@@ -109,7 +107,17 @@ function show_text(text, temporary, color)
             obs.obs_data_set_string(settings, 'text', log_lines)
         end
 
-        obs.obs_data_set_int(settings, 'color', 1*color)
+        -- The OBS GDI+ source property editor shows #html color as #RRGGBB,
+        -- so red=255, green=0, blue=0 is shown as #FF0000
+        -- But the saved json gets 4278190335 = 0xFF0000FF, with red as the LAST byte,
+        -- and an extra FF on the top. You can edit the json to remove to top FF, and
+        -- it reads back just the same.
+        -- Lua needs to used this BGR format: red = 255 / 0x0000FF, green = 0x00FF00
+        local color = 0x00FF00  -- GREEN
+        if error_flag then
+            color = 0x0000FF    -- RED
+        end
+        obs.obs_data_set_int(settings, 'color', color)
         obs.obs_source_update(source, settings)
         obs.obs_source_release(source)
     else
@@ -117,8 +125,19 @@ function show_text(text, temporary, color)
     end
 end
 
+-- Display a string on the control scene's "explainer" source
+function show_explainer(text)
+    local source = obs.obs_get_source_by_name(explainer_source)
+    if source ~= nil then
+        local settings = obs.obs_data_create()
+        obs.obs_data_set_string(settings, 'text', text)
+        obs.obs_source_update(source, settings)
+        obs.obs_source_release(source)
+    end
+end
+
 -- Called to set default values of edited/persisted data
--- (Oddly, called BEFORE script_load)
+-- (Called by framework BEFORE script_load)
 function script_defaults(settings)
     print("script_defaults")
 end
@@ -126,7 +145,6 @@ end
 -- Called at script load
 function script_load(settings)
     print("script_load")
-
     obs.obs_frontend_add_event_callback(handle_frontend_event)
 end
 
@@ -280,7 +298,7 @@ function timer_callback()
         else
             -- End of file
             set_state(STATE_STOP)
-            show_text('Stopped at end of file')
+            show_text('STOPPED: end of file')
         end
     end
 end
@@ -296,11 +314,17 @@ function start_playing(a_reason)
     error_flag = false
     command_index = 0
     command_data = {}
-    log_lines = '1\n2\n3\n4\n5\n6\n7\n8\n9\n10'
+    log_lines = '\n\n\n\n\n\n\n\n\n'
     
     if command_file == '' then
-        print('No command file to play')
+        local str = 'No command file to play'
+        show_explainer(str)
+        print(str)
     else
+        local str = string.format(explainer_text, command_file)
+        print(str)
+        show_explainer(str)
+
         -- Load the file
         infile = io.open(command_file, 'r')
         if infile == nil then
@@ -416,7 +440,7 @@ cmd_table['control_text'] = {'Text source in control scene on which to show our 
             return set_error('no source called "' .. tail .. '"')
         end
 
-        command_text = tail
+        explainer_actions = tail
         obs.obs_source_release(text_source)
 
         print('Changed control text source to "' .. tail .. '"')
@@ -477,12 +501,10 @@ cmd_table['ctl_hotkey'] = {'Send hotkey Ctrl+xxxx',
 cmd_table['streamkey'] = {'Show streamkey',
     function(tail)
         local service = obs.obs_frontend_get_streaming_service()
-
-        local name = obs.obs_service_get_name(service)
         local key = obs.obs_service_get_key(service)
-        -- obs_frontend_get_streaming_service says "returns new reference", but
+        -- Doc for obs_frontend_get_streaming_service says "returns new reference", but
         -- calling obs.obs_service_release(service) causes a crash on second get
-        show_text( 'Streaming Service is "' .. name .. '"  Streaming Key is "' .. key .. '"')
+        show_text( 'Streaming Key is "' .. key .. '"')
         return true
     end
     }
@@ -562,8 +584,8 @@ cmd_table['date'] = {'Wait for specified date',
                 return true
             else
                 -- After the date: stop processing
-                show_text('After ' .. tail .. '. Stop processing commands')
-                set_state(STATE_DONE)
+                set_state(STATE_STOP)
+                show_text('STOPPED: today is after ' .. tail)
                 return false
             end
         else
@@ -591,8 +613,8 @@ cmd_table['time'] = {'Wait for specified clock time',
                 -- Within a plausible window of the desired time
                 show_text('On or after ' .. tail)
             else
-                show_text('More than two hours after ' .. tail .. '. Stop processing commands')
-                set_state(STATE_DONE)
+                set_state(STATE_STOP)
+                show_text('STOPPED: more than two hours after ' .. tail)
                 return false
             end
         else
@@ -616,16 +638,15 @@ cmd_table['wait'] = {'Wait for specified number of seconds',
             return false
         end
         
-        show_text('Waited ' .. tail)
+        show_text('Waited ' .. tail .. ' seconds')
         return true
     end
     }
 
 cmd_table['stop'] = {'Stop execution',
     function(tail)
-        -- show_text('Stopped')
-        print('Stopped')
         set_state(STATE_STOP)
+        show_text('STOPPED by command')
         return false
     end
     }
@@ -679,14 +700,3 @@ cmd_table['stop_recording'] = {'Stop recording',
         return true
     end
     }
-
--- TODO: just a test bed for color spec
-cmd_table['color'] = {'Set color',
-    function(tail)
-        print('Text color is ' .. tail, tail)
-        show_text('Text color is ' .. tail, tail)
-
-        return true
-    end
-    }
-
