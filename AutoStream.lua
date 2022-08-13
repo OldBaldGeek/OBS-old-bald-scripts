@@ -1,7 +1,7 @@
 -- AutoStream.lua - simple automated streaming
 
 local obs = obslua
-local version = '0.5'
+local version = '0.6'
 
 -- These names must match the source names used on the control scene
 local explainer_source  = 'Automatic Streamer - explainer'
@@ -10,7 +10,6 @@ local explainer_actions = 'Automatic Streamer - actions'
 -- Edited/persisted values
 local command_file = ''             -- from filepath control
 local continue_on_error = false     -- from checkbox
-local test_string = ''              -- from edit control (testing)
 
 -- Interpreter variables
 local error_flag = false            -- sticky error flag to stop execution
@@ -29,7 +28,7 @@ local timer_interval_ms = 1000      -- timer poll interval
 local timer_active = false
 local log_lines = '\n\n\n\n\n\n\n\n\n'
 
--- Table of commands/handlers (initialized after each handler definition)
+-- Table of commands/handlers (initialized by each handler definition)
 local cmd_table = {}
 
 -- Description displayed in the Scripts dialog window
@@ -158,8 +157,6 @@ function script_update(settings)
     -- print("script_update")
     command_file = obs.obs_data_get_string(settings, "command_file")
     continue_on_error = obs.obs_data_get_bool(settings, "continue_on_error")
-
-    test_string = obs.obs_data_get_string(settings, "test_string")
 end
 
 -- Called before data settings are saved
@@ -177,18 +174,6 @@ function script_properties()
     obs.obs_properties_add_button(props, 'restart_button', 'Restart command file',
         function() 
             start_playing('Restart Button pressed')
-        end)
-
-    -- Stuff for testing
-    obs.obs_properties_add_text(props, 'test_string', 'Test String', 0) --, OBS_TEXT_DEFAULT)
-    obs.obs_properties_add_button(props, 'test_button', 'DO TEST STUFF',
-        function() 
-            if not execute_line(test_string, 0) then
-                print('Command "' .. test_string .. '" returned false')
-            end
-
-            -- return true to update UI
-            return true 
         end)
 
     return props
@@ -242,15 +227,6 @@ function handle_frontend_event(event)
     elseif event == obs.OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGED then
         -- Changed scene collection: scenes have been loaded
         start_playing('OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGED')
-
-    elseif event == obs.OBS_FRONTEND_EVENT_SCENE_CHANGED then
-        print("OBS_FRONTEND_EVENT_SCENE_CHANGED")
-    elseif event == obs.OBS_FRONTEND_EVENT_TRANSITION_STOPPED then
-        print("OBS_FRONTEND_EVENT_TRANSITION_STOPPED")
-    elseif event == obs.OBS_FRONTEND_EVENT_PROFILE_CHANGED then
-        print("OBS_FRONTEND_EVENT_PROFILE_CHANGED")
-    elseif event == obs.OBS_FRONTEND_EVENT_EXIT then
-        print("OBS_FRONTEND_EVENT_EXIT")
     end
 end
 
@@ -273,7 +249,7 @@ function execute_line(a_line, a_line_number)
 
         local entry = cmd_table[command]
         if entry ~=nil then
-            retval = entry[2](tail)
+            retval = entry(tail)
         else
             return set_error('Unknown command "' .. a_line .. '" (line ' .. 
                               a_line_number .. ')')
@@ -322,7 +298,6 @@ function start_playing(a_reason)
         print(str)
     else
         local str = string.format(explainer_text, command_file)
-        print(str)
         show_explainer(str)
 
         -- Load the file
@@ -356,34 +331,13 @@ end
 -- Command Handlers
 --------------------------------------------------------------------------------
 
--- This would be more useful if sent to a file...
-cmd_table['help'] = {'print a command list', 
-    function(tail)
-        local str = ''
-        for key, value in pairs(cmd_table) do
-            str = str .. key .. '\t' .. value[1] .. '\n'
-        end
-        
-        print(str)
-        return true
-    end
-    }
-
-cmd_table['#'] = {'comment line (ignored)', 
-    function(tail)
-        print('# ' .. tail)
-        return true
-    end
-    }
-
-cmd_table['show'] = {'show tail in the log', 
+cmd_table['show'] =
     function(tail)
         show_text(tail)
         return true
     end
-    }
 
-cmd_table['profile'] = {'Change profile to xxxx', 
+cmd_table['profile'] =
     function(tail)
         obs.obs_frontend_set_current_profile(tail)
         local newProfile = obs.obs_frontend_get_current_profile()
@@ -395,11 +349,9 @@ cmd_table['profile'] = {'Change profile to xxxx',
         show_text('Changed profile to "' .. tail .. '"')
         return true
     end
-    }
 
--- Not very useful, as it will stop the interpreter
--- if control_scene has been set
-cmd_table['preview'] = {'Change preview to xxxx', 
+-- Not very useful, as it will stop the interpreter if control_scene has been set
+cmd_table['preview'] =
     function(tail)
         local new_scene = obs.obs_get_scene_by_name(tail)
         if new_scene == nil then
@@ -411,11 +363,10 @@ cmd_table['preview'] = {'Change preview to xxxx',
         obs.obs_scene_release(new_scene)
         return true
     end
-    }
 
 -- Specify a control scene, or specify 'none' to remove a previously selected
 -- control scene
-cmd_table['control_scene'] = {'Specify the control scene', 
+cmd_table['control_scene'] =
     function(tail)
         if tail ~= 'none' then
             local new_scene = obs.obs_get_scene_by_name(tail)
@@ -428,12 +379,12 @@ cmd_table['control_scene'] = {'Specify the control scene',
         end
 
         command_scene = tail
-        print('Changed control scene to "' .. tail .. '"')
+        show_text('Changed control scene to "' .. tail .. '"')
         return true
     end
-    }
 
-cmd_table['control_text'] = {'Text source in control scene on which to show our actions', 
+-- Usually not needed, as explainer_actions has a default
+cmd_table['control_text'] =
     function(tail)
         local text_source = obs.obs_get_source_by_name(tail)
         if text_source == nil then
@@ -444,13 +395,14 @@ cmd_table['control_text'] = {'Text source in control scene on which to show our 
         obs.obs_source_release(text_source)
 
         print('Changed control text source to "' .. tail .. '"')
-        -- Clean out any text from a previous run
-        -- show_text('')
         return true
     end
-    }
 
-cmd_table['program'] = {'Change program view to xxxx', 
+-- Set the Program scene.
+-- This triggers a transition, and puts the old Program scene in Preview,
+-- which will usually stop the interpreter. We use STATE_TRANSITIONING as a
+-- hack until the transition is complete. Do you have a better idea?
+cmd_table['program'] =
     function(tail)
         new_scene = obs.obs_get_scene_by_name(tail)
         if new_scene == nil then
@@ -466,9 +418,10 @@ cmd_table['program'] = {'Change program view to xxxx',
         obs.obs_scene_release(new_scene)
         return true
     end
-    }
 
-cmd_table['hotkey'] = {'Send hotkey xxxx', 
+-- This could be used to do things that have no direct API, such as
+-- interacting with SimpleSlides.lus to change slides, or hide the slide source.
+cmd_table['hotkey'] =
     function(tail)
         show_text('Send hotkey "' .. tail .. '"')
 
@@ -481,9 +434,8 @@ cmd_table['hotkey'] = {'Send hotkey xxxx',
         obs.obs_hotkey_inject_event(combo,false)
         return true
     end
-    }
 
-cmd_table['ctl_hotkey'] = {'Send hotkey Ctrl+xxxx',
+cmd_table['ctl_hotkey'] =
     function(tail)
         show_text('Send Ctrl + hotkey "' .. tail .. '"')
 
@@ -496,9 +448,8 @@ cmd_table['ctl_hotkey'] = {'Send hotkey Ctrl+xxxx',
         obs.obs_hotkey_inject_event(combo,false)
         return true
     end
-    }
 
-cmd_table['streamkey'] = {'Show streamkey',
+cmd_table['streamkey'] =
     function(tail)
         local service = obs.obs_frontend_get_streaming_service()
         local key = obs.obs_service_get_key(service)
@@ -507,29 +458,27 @@ cmd_table['streamkey'] = {'Show streamkey',
         show_text( 'Streaming Key is "' .. key .. '"')
         return true
     end
-    }
 
-cmd_table['transitiontime'] = {'Set transition time to xxxx',
+-- Note that the changed time may be saved in the json, affecting future runs
+cmd_table['transitiontime'] =
     function(tail)
         show_text('Change transition time to "' .. tail .. '"')
         obs.obs_frontend_set_transition_duration( tonumber(tail) )
         return true
     end
-    }
 
 -- Probably not very useful, since it will move the Preview to Program, and
 -- Preview will typically be our control scene.
 -- There might a be use-case where command_scene = 'none'
-cmd_table['transition'] = {'Do transition',
+cmd_table['transition'] =
     function(tail)
         show_text('Begin Transition, taking ' .. obs.obs_frontend_get_transition_duration() .. ' msec' )
         set_state(STATE_TRANSITIONING)
         obs.obs_frontend_preview_program_trigger_transition()
         return true
     end
-    }
 
-cmd_table['audiolevel'] = {'Set audio level of xxxx to yyy dB',
+cmd_table['audiolevel'] =
     function(tail)
         local pos, value = tail:match('()%s+(-*%d+)$')
         if pos == nil or value == nil then
@@ -553,7 +502,6 @@ cmd_table['audiolevel'] = {'Set audio level of xxxx to yyy dB',
         obs.obs_source_release(source)
         return true
     end
-    }
   
 local monther = {January=1, Jan=1, February=2, Feb=2,
                  March=3,   Mar=3, April=4,    Apr=4,
@@ -562,11 +510,14 @@ local monther = {January=1, Jan=1, February=2, Feb=2,
                  September=9,Sep=9,October=10, Oct=10,
                  November=11,Nov=11,December=12,Dec=12}
 
-cmd_table['date'] = {'Wait for specified date',
+cmd_table['date'] =
     function(tail)
         -- Parse the tail as a date: July 24, 2022
         local month, day, year = tail:match('(%a+)%s+(%d+),*%s*(%d+)')
-        if month and monther[month] then
+        day = tonumber(day)
+        year = tonumber(year)
+        if month and monther[month] and
+           (day >= 1) and (day <= 31) and (year >= 2022) and (year <= 2099) then
             -- Simplest is year*10000 + month*100 + day
             -- Numerical COMPARE is good, but subtraction doesn't give #days
             month = monther[month]
@@ -576,7 +527,7 @@ cmd_table['date'] = {'Wait for specified date',
             local now_num = now.year*10000 + now.month*100 + now.day
             if now_num < want_num then
                 -- Before the date: wait for it
-                show_text('Waiting for ' .. tail, true)
+                show_text('Waiting until ' .. tail, true)
                 return false
             elseif now_num == want_num then
                 -- On the date: continue
@@ -585,7 +536,7 @@ cmd_table['date'] = {'Wait for specified date',
             else
                 -- After the date: stop processing
                 set_state(STATE_STOP)
-                show_text('STOPPED: today is after ' .. tail)
+                show_text('STOPPED: today is after the specified date ' .. tail)
                 return false
             end
         else
@@ -594,9 +545,8 @@ cmd_table['date'] = {'Wait for specified date',
 
         return true
     end
-    }
 
-cmd_table['time'] = {'Wait for specified clock time',
+cmd_table['time'] =
     function(tail)
         -- Parse the tail as a time: 8:55
         local hour, minute = tail:match('(%d+):(%d+)')
@@ -607,14 +557,15 @@ cmd_table['time'] = {'Wait for specified clock time',
             local now_num = now.hour*60 + now.min
             if now_num < want_num then
                 -- Before the time: wait for it
-                show_text('Waiting for ' .. tail .. '. Now ' .. os.date('%H:%M:%S'), true)
+                show_text('Waiting until ' .. tail .. '. Now ' .. os.date('%H:%M:%S'), true)
                 return false
             elseif now_num < want_num + 120 then
                 -- Within a plausible window of the desired time
-                show_text('On or after ' .. tail)
+                show_text('Time is on or after ' .. tail)
+                return true
             else
                 set_state(STATE_STOP)
-                show_text('STOPPED: more than two hours after ' .. tail)
+                show_text('STOPPED: more than two hours after the specified time ' .. tail)
                 return false
             end
         else
@@ -623,9 +574,8 @@ cmd_table['time'] = {'Wait for specified clock time',
 
         return true
     end
-    }
 
-cmd_table['wait'] = {'Wait for specified number of seconds',
+cmd_table['wait'] =
     function(tail)
         local sec = tail:match('(%d+)')
         if sec == nil then
@@ -641,17 +591,15 @@ cmd_table['wait'] = {'Wait for specified number of seconds',
         show_text('Waited ' .. tail .. ' seconds')
         return true
     end
-    }
 
-cmd_table['stop'] = {'Stop execution',
+cmd_table['stop'] =
     function(tail)
         set_state(STATE_STOP)
         show_text('STOPPED by command')
         return false
     end
-    }
 
-cmd_table['start_streaming'] = {'Start streaming',
+cmd_table['start_streaming'] =
     function(tail)
         if obs.obs_frontend_streaming_active() then
             show_text('Already streaming')
@@ -661,9 +609,8 @@ cmd_table['start_streaming'] = {'Start streaming',
         end
         return true
     end
-    }
 
-cmd_table['stop_streaming'] = {'Stop streaming',
+cmd_table['stop_streaming'] =
     function(tail)
         if obs.obs_frontend_streaming_active() then
             obs.obs_frontend_streaming_stop()
@@ -674,9 +621,8 @@ cmd_table['stop_streaming'] = {'Stop streaming',
 
         return true
     end
-    }
 
-cmd_table['start_recording'] = {'Start recording',
+cmd_table['start_recording'] =
     function(tail)
         if obs.obs_frontend_recording_active() then
             show_text('Already recording')
@@ -686,9 +632,8 @@ cmd_table['start_recording'] = {'Start recording',
         end
         return true
     end
-    }
 
-cmd_table['stop_recording'] = {'Stop recording',
+cmd_table['stop_recording'] =
     function(tail)
         if obs.obs_frontend_recording_active() then
             obs.obs_frontend_recording_stop()
@@ -699,4 +644,3 @@ cmd_table['stop_recording'] = {'Stop recording',
 
         return true
     end
-    }
