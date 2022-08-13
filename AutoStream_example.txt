@@ -1,0 +1,50 @@
+# AutoStream_example.txt
+# Used as input to the OBS script AutoStream.lua to give simple automatic
+# control of OBS for streaming, recording etc.
+#
+# This example assumes a scene collection with
+#   Scenes:
+#   - "Opening View"        Camera view of the space, with title
+#   - "Main View"           Camera view of performance space
+#   - "Command View"        Shown in Preview to show script actions
+#
+#   Audio Sources:
+#   - "Room Mics"           Crowd mic, used for ambience
+#   - "Music Mics"          Performers mics
+
+# Do the rest of this only on the specified date, else stop
+date August 14, 2022
+
+# Define control_scene to allow an operator to pause automatic operation
+# and to show control_text (changes Preview to control_scene)
+control_scene Command View
+show Starting Automated Stream commands
+
+# Select the profile with the correct streaming key
+profile Sunday
+
+# Show the streaming key, just in case
+streamkey
+
+# Set ambient audio levels: music mics down so they don't pick up musicians' banter
+audiolevel Room Mics    -6
+audiolevel Music Mics   -15
+
+show Wait until 5 minutes before show time, then start streaming
+time 8:55
+start_streaming
+
+show Wait until show time, then change to the main scene
+time 9:00
+
+# Switch to our main scene, prioritize music mics over crowd
+program Main View
+audiolevel Room Mics    -10
+audiolevel Music Mics   -4
+
+show Wait 90 minutes, presuming that the event will be over by then, then stop streaming
+time 10:30
+stop_streaming
+
+# We are done
+stop
