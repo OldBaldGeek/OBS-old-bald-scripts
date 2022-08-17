@@ -10,7 +10,8 @@ local hideable_source_name  = ""             -- Name of the source to hide
 local stretch_factor        = 66             -- percent of fullscreen
 
 -- Identifier of the hotkey set by OBS
-local hotkey_id = obs.OBS_INVALID_HOTKEY_ID
+local hotkey_toggle_id = obs.OBS_INVALID_HOTKEY_ID
+local hotkey_clean_id  = obs.OBS_INVALID_HOTKEY_ID
 
 -- Description displayed in the Scripts dialog window
 function script_description()
@@ -31,10 +32,14 @@ function script_load(settings)
     print("CamToggle version " .. version)
 
     -- Connect our callbacks
-    hotkey_id = obs.obs_hotkey_register_frontend("camtoggle_button", "[CamToggle]toggle", on_hotkey)
-
+    hotkey_toggle_id = obs.obs_hotkey_register_frontend("camtoggle_button", "[CamToggle]toggle", on_hotkey)
     local hotkey_save_array = obs.obs_data_get_array(settings, "toggle_hotkey")
-    obs.obs_hotkey_load(hotkey_id, hotkey_save_array)
+    obs.obs_hotkey_load(hotkey_toggle_id, hotkey_save_array)
+    obs.obs_data_array_release(hotkey_save_array)
+
+    hotkey_clean_id  = obs.obs_hotkey_register_frontend("camtoggle_clean_button", "[CamToggle]clean", on_clean_hotkey)
+    hotkey_save_array = obs.obs_data_get_array(settings, "clean_hotkey")
+    obs.obs_hotkey_load(hotkey_clean_id, hotkey_save_array)
     obs.obs_data_array_release(hotkey_save_array)
 end
 
@@ -89,8 +94,12 @@ end
 -- Called before data settings are saved
 function script_save(settings)
     -- Hotkey save
-    local hotkey_save_array = obs.obs_hotkey_save(hotkey_id)
+    local hotkey_save_array = obs.obs_hotkey_save(hotkey_toggle_id)
     obs.obs_data_set_array(settings, "toggle_hotkey", hotkey_save_array)
+    obs.obs_data_array_release(hotkey_save_array)
+
+    hotkey_save_array = obs.obs_hotkey_save(hotkey_clean_id)
+    obs.obs_data_set_array(settings, "clean_hotkey", hotkey_save_array)
     obs.obs_data_array_release(hotkey_save_array)
 end
 
@@ -204,7 +213,7 @@ function restore_scene(scene_source, stretchable_item, hideable_item)
     obs.obs_sceneitem_set_visible(hideable_item, true)
 end
 
--- Callback for the hotkey
+-- Callback for the toggle hotkey
 function on_hotkey(pressed)
     if pressed then
         local scene_source = obs.obs_frontend_get_current_preview_scene()
@@ -226,3 +235,25 @@ function on_hotkey(pressed)
         end
     end
 end
+
+function on_clean_hotkey(pressed)
+    if pressed then
+        local scene_source = obs.obs_frontend_get_current_preview_scene()
+        if scene_source then
+            -- We need both a stretchable item and a hideable item
+            local current_scene = obs.obs_scene_from_source(scene_source)
+            local stretchable_item = find_sceneitem_with_id(current_scene, stretchable_source_id)
+            local hideable_item = obs.obs_scene_find_source_recursive(current_scene, hideable_source_name)
+            if stretchable_item and hideable_item then
+                if obs.obs_sceneitem_visible(hideable_item) then
+                    -- visible source means NOT fullscreen: set fullscreen
+                    set_fullscreen(scene_source, stretchable_item, hideable_item)
+                else
+                    -- already fullscreen
+                end
+            end
+            obs.obs_source_release(scene_source)
+        end
+    end
+end
+
