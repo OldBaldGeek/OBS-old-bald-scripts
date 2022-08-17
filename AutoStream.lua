@@ -1,7 +1,7 @@
 -- AutoStream.lua - simple automated streaming
 
 local obs = obslua
-local version = '0.6'
+local version = '0.7'
 
 -- These names must match the source names used on the control scene
 local explainer_source  = 'Automatic Streamer - explainer'
@@ -118,6 +118,7 @@ function show_text(text, temporary)
         end
         obs.obs_data_set_int(settings, 'color', color)
         obs.obs_source_update(source, settings)
+        obs.obs_data_release(settings)
         obs.obs_source_release(source)
     else
         print(text)
@@ -131,6 +132,7 @@ function show_explainer(text)
         local settings = obs.obs_data_create()
         obs.obs_data_set_string(settings, 'text', text)
         obs.obs_source_update(source, settings)
+        obs.obs_data_release(settings)
         obs.obs_source_release(source)
     end
 end
