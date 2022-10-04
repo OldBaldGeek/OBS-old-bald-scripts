@@ -1,7 +1,7 @@
 -- AutoStream.lua - simple automated streaming
 
 local obs = obslua
-local version = '0.7'
+local version = '0.8'
 
 -- These names must match the source names used on the control scene
 local explainer_source  = 'Automatic Streamer - explainer'
@@ -30,6 +30,9 @@ local log_lines = '\n\n\n\n\n\n\n\n\n'
 
 -- Table of commands/handlers (initialized by each handler definition)
 local cmd_table = {}
+
+-- Script variables set by the "let" command, used as command parameters elsewhere
+local variables = {}
 
 -- Description displayed in the Scripts dialog window
 function script_description()
@@ -232,12 +235,56 @@ function handle_frontend_event(event)
     end
 end
 
+-- Process a command tail to expand any $variables
+function expand_tail(a_tail)
+    local retval = ''
+    local start = 1
+    while true do
+        local ix, jx = a_tail:find('%$[%w_]+', start)
+        if ix ~= nil then
+            -- Found a variable name
+            if ix > start then
+                -- Copy preceding text
+                retval = retval .. a_tail:sub(start, ix-1)
+            end
+
+            local var = a_tail:sub(ix+1, jx)
+            local value = variables[var]
+            if value == nil then
+                set_error('Unknown variable "' .. var .. '" in command tail "' .. 
+                          a_tail .. '"')
+                -- Not clear what to return here. Hope that empty tail will
+                -- cause our caller to generate an error and stop.
+                return ''
+            end
+            retval = retval .. value
+            start = jx+1
+        else
+            -- No more variables to expand
+            retval = retval .. a_tail:sub(start, -1)
+            break
+        end
+    end
+
+    return retval
+end
+
 -- Execute a_line
 -- Return true on successful or complete execution (including empty line)
 -- Return false on unknown command, or if handler returns false
 function execute_line(a_line, a_line_number)
     retval = true
-    if a_line ~= '' then
+    if a_line:sub(1,1) == '$' then
+        -- Variable assignment
+        local varname, value = a_line:match('%$([%w_]+)%s*%=%s*(.+)')
+        if varname == nil or value == nil then
+            return set_error('Cannot parse "' .. a_line .. '" as assignment (line' ..
+                              a_line_number .. ')')
+        end
+        show_text('Variable "' .. varname .. '" has value "' .. value ..'"')
+        variables[varname] = value
+
+    elseif a_line ~= '' then
         local command
         local tail
         local c0, cx = a_line:find(' ')
@@ -251,7 +298,7 @@ function execute_line(a_line, a_line_number)
 
         local entry = cmd_table[command]
         if entry ~=nil then
-            retval = entry(tail)
+            retval = entry( expand_tail(tail) )
         else
             return set_error('Unknown command "' .. a_line .. '" (line ' .. 
                               a_line_number .. ')')
@@ -269,7 +316,7 @@ function timer_callback()
             if execute_line(line, command_index) then
                 command_index = command_index + 1
                 
-                -- Remember when the next command weill start.
+                -- Remember when the next command will start.
                 -- (Used by WAIT and similar commands)
                 time_command_started = os.time()
             end
@@ -333,12 +380,14 @@ end
 -- Command Handlers
 --------------------------------------------------------------------------------
 
+-- Display the command tail
 cmd_table['show'] =
     function(tail)
         show_text(tail)
         return true
     end
 
+-- Set OBS profile, mostly to change the streaming key
 cmd_table['profile'] =
     function(tail)
         obs.obs_frontend_set_current_profile(tail)
@@ -352,6 +401,7 @@ cmd_table['profile'] =
         return true
     end
 
+-- Set the Preview scene.
 -- Not very useful, as it will stop the interpreter if control_scene has been set
 cmd_table['preview'] =
     function(tail)
@@ -385,6 +435,7 @@ cmd_table['control_scene'] =
         return true
     end
 
+-- Specify the GDI text source to be used to show control actions.
 -- Usually not needed, as explainer_actions has a default
 cmd_table['control_text'] =
     function(tail)
@@ -421,6 +472,7 @@ cmd_table['program'] =
         return true
     end
 
+-- Generate a hotkey press and release
 -- This could be used to do things that have no direct API, such as
 -- interacting with SimpleSlides.lus to change slides, or hide the slide source.
 cmd_table['hotkey'] =
@@ -451,6 +503,7 @@ cmd_table['ctl_hotkey'] =
         return true
     end
 
+-- Show the current streaming key
 cmd_table['streamkey'] =
     function(tail)
         local service = obs.obs_frontend_get_streaming_service()
@@ -461,6 +514,7 @@ cmd_table['streamkey'] =
         return true
     end
 
+-- Specify the duration of the default transition.
 -- Note that the changed time may be saved in the json, affecting future runs
 cmd_table['transitiontime'] =
     function(tail)
@@ -469,6 +523,7 @@ cmd_table['transitiontime'] =
         return true
     end
 
+-- Cause a transition.
 -- Probably not very useful, since it will move the Preview to Program, and
 -- Preview will typically be our control scene.
 -- There might a be use-case where command_scene = 'none'
@@ -480,6 +535,7 @@ cmd_table['transition'] =
         return true
     end
 
+-- Set the level of an audio source
 cmd_table['audiolevel'] =
     function(tail)
         local pos, value = tail:match('()%s+(-*%d+)$')
@@ -512,6 +568,7 @@ local monther = {January=1, Jan=1, February=2, Feb=2,
                  September=9,Sep=9,October=10, Oct=10,
                  November=11,Nov=11,December=12,Dec=12}
 
+-- Verify or wait for the specified date
 cmd_table['date'] =
     function(tail)
         -- Parse the tail as a date: July 24, 2022
@@ -548,18 +605,23 @@ cmd_table['date'] =
         return true
     end
 
+-- Verify or wait for the specified time.
 cmd_table['time'] =
     function(tail)
-        -- Parse the tail as a time: 8:55
-        local hour, minute = tail:match('(%d+):(%d+)')
-        if hour then
+        -- Parse the tail as a time: 8:55 or 8:55 AM; 20:55 or 8:55 PM
+        local ix, iy, hour, minute = tail:find('(%d+):(%d+)')
+        if hour and minute then
+            local am_pm = tail:match('%s*(%w+)', iy+1)
+            if am_pm and am_pm:upper() == 'PM' then
+                hour = hour + 12
+            end
             local want_num = hour*60 + minute
 
             local now = os.date('*t')
             local now_num = now.hour*60 + now.min
             if now_num < want_num then
                 -- Before the time: wait for it
-                show_text('Waiting until ' .. tail .. '. Now ' .. os.date('%H:%M:%S'), true)
+                show_text('Waiting until ' .. tail .. '. Now ' .. os.date('%I:%M:%S %p'), true)
                 return false
             elseif now_num < want_num + 120 then
                 -- Within a plausible window of the desired time
@@ -577,6 +639,7 @@ cmd_table['time'] =
         return true
     end
 
+-- Wait a specified number of seconds
 cmd_table['wait'] =
     function(tail)
         local sec = tail:match('(%d+)')
@@ -594,6 +657,7 @@ cmd_table['wait'] =
         return true
     end
 
+-- Stop interpreting commands
 cmd_table['stop'] =
     function(tail)
         set_state(STATE_STOP)
@@ -601,6 +665,7 @@ cmd_table['stop'] =
         return false
     end
 
+-- Start streaming
 cmd_table['start_streaming'] =
     function(tail)
         if obs.obs_frontend_streaming_active() then
@@ -612,6 +677,7 @@ cmd_table['start_streaming'] =
         return true
     end
 
+-- Stop streaming
 cmd_table['stop_streaming'] =
     function(tail)
         if obs.obs_frontend_streaming_active() then
@@ -624,6 +690,7 @@ cmd_table['stop_streaming'] =
         return true
     end
 
+-- Start recording
 cmd_table['start_recording'] =
     function(tail)
         if obs.obs_frontend_recording_active() then
@@ -635,6 +702,7 @@ cmd_table['start_recording'] =
         return true
     end
 
+-- Stop recording
 cmd_table['stop_recording'] =
     function(tail)
         if obs.obs_frontend_recording_active() then
