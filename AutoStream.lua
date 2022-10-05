@@ -1,7 +1,7 @@
 -- AutoStream.lua - simple automated streaming
 
 local obs = obslua
-local version = '0.8'
+local version = '1.0'
 
 -- These names must match the source names used on the control scene
 local explainer_source  = 'Automatic Streamer - explainer'
@@ -14,7 +14,7 @@ local continue_on_error = false     -- from checkbox
 -- Interpreter variables
 local error_flag = false            -- sticky error flag to stop execution
 local command_data = {}             -- array of lines from command file
-local command_index = 0             -- line number to execute in command_data
+local command_index = 0             -- index into command_data
 local command_scene = 'none'        -- scene showing our progress
 local time_command_started = 0      -- time_t that current command started
 
@@ -27,6 +27,11 @@ local state = STATE_STOPPED
 local timer_interval_ms = 1000      -- timer poll interval
 local timer_active = false
 local log_lines = '\n\n\n\n\n\n\n\n\n'
+
+-- Return codes from command handlers
+local IMMEDIATE_NEXT = 0    -- execute the next command immediately
+local DELAYED_NEXT   = 1    -- execute the next command on the next tick
+local DELAYED_SAME   = 2    -- execute the same command on the next tick
 
 -- Table of commands/handlers (initialized by each handler definition)
 local cmd_table = {}
@@ -86,7 +91,10 @@ function set_error(a_text)
         show_text('STOPPED due to error')
     end
 
-    return continue_on_error
+    if continue_on_error then
+        return DELAYED_NEXT
+    end
+    return DELAYED_SAME
 end
 
 -- Display a string on the control scene's "actions" source, or log if no such source
@@ -270,18 +278,23 @@ function expand_tail(a_tail)
 end
 
 -- Execute a_line
--- Return true on successful or complete execution (including empty line)
--- Return false on unknown command, or if handler returns false
+-- Returns the result code from the command handler:
+--   IMMEDIATE_NEXT to execute the next command immediately
+--   DELAYED_NEXT   to execute the next command on the next tick
+--   DELAYED_SAME   to execute the same command on the next tick
+--
+-- Return DELAYED_NEXT on set-variable or empty line
+--
 function execute_line(a_line, a_line_number)
-    retval = true
+    local retval = IMMEDIATE_NEXT
     if a_line:sub(1,1) == '$' then
         -- Variable assignment
         local varname, value = a_line:match('%$([%w_]+)%s*%=%s*(.+)')
         if varname == nil or value == nil then
-            return set_error('Cannot parse "' .. a_line .. '" as assignment (line' ..
+            return set_error('Cannot parse "' .. a_line .. '" as assignment (line ' ..
                               a_line_number .. ')')
         end
-        show_text('Variable "' .. varname .. '" has value "' .. value ..'"')
+        show_text(varname .. ' is ' .. value)
         variables[varname] = value
 
     elseif a_line ~= '' then
@@ -310,10 +323,12 @@ end
 
 -- Timer callback to execute the next script line
 function timer_callback()
-    if state == STATE_RUN then
+    local retval = IMMEDIATE_NEXT
+    while (state == STATE_RUN) and (retval == IMMEDIATE_NEXT) do
         local line = command_data[command_index]
         if line then
-            if execute_line(line, command_index) then
+            retval = execute_line(line, command_index)
+            if retval ~= DELAYED_SAME then
                 command_index = command_index + 1
                 
                 -- Remember when the next command will start.
@@ -384,7 +399,7 @@ end
 cmd_table['show'] =
     function(tail)
         show_text(tail)
-        return true
+        return IMMEDIATE_NEXT
     end
 
 -- Set OBS profile, mostly to change the streaming key
@@ -398,7 +413,7 @@ cmd_table['profile'] =
         end
 
         show_text('Changed profile to "' .. tail .. '"')
-        return true
+        return DELAYED_NEXT
     end
 
 -- Set the Preview scene.
@@ -413,7 +428,7 @@ cmd_table['preview'] =
         show_text('Changed preview scene to "' .. tail .. '"')
         obs.obs_frontend_set_current_preview_scene(obs.obs_scene_get_source(new_scene))
         obs.obs_scene_release(new_scene)
-        return true
+        return DELAYED_NEXT
     end
 
 -- Specify a control scene, or specify 'none' to remove a previously selected
@@ -431,8 +446,8 @@ cmd_table['control_scene'] =
         end
 
         command_scene = tail
-        show_text('Changed control scene to "' .. tail .. '"')
-        return true
+        show_text('  Changed control scene to "' .. tail .. '"')
+        return DELAYED_NEXT
     end
 
 -- Specify the GDI text source to be used to show control actions.
@@ -448,7 +463,7 @@ cmd_table['control_text'] =
         obs.obs_source_release(text_source)
 
         print('Changed control text source to "' .. tail .. '"')
-        return true
+        return DELAYED_NEXT
     end
 
 -- Set the Program scene.
@@ -469,7 +484,7 @@ cmd_table['program'] =
         show_text('Changed program scene to "' .. tail .. '"')
         obs.obs_frontend_set_current_scene(obs.obs_scene_get_source(new_scene))
         obs.obs_scene_release(new_scene)
-        return true
+        return DELAYED_NEXT
     end
 
 -- Generate a hotkey press and release
@@ -477,8 +492,6 @@ cmd_table['program'] =
 -- interacting with SimpleSlides.lus to change slides, or hide the slide source.
 cmd_table['hotkey'] =
     function(tail)
-        show_text('Send hotkey "' .. tail .. '"')
-
         local combo = obs.obs_key_combination()
         combo.modifiers = 0
         combo.key = obs.obs_key_from_name(tail)
@@ -486,13 +499,12 @@ cmd_table['hotkey'] =
         obs.obs_hotkey_inject_event(combo,false)
         obs.obs_hotkey_inject_event(combo,true)
         obs.obs_hotkey_inject_event(combo,false)
-        return true
+        show_text('  Sent hotkey "' .. tail .. '"')
+        return DELAYED_NEXT
     end
 
 cmd_table['ctl_hotkey'] =
     function(tail)
-        show_text('Send Ctrl + hotkey "' .. tail .. '"')
-
         local combo = obs.obs_key_combination()
         combo.modifiers = obs.INTERACT_CONTROL_KEY
         combo.key = obs.obs_key_from_name(tail)
@@ -500,7 +512,8 @@ cmd_table['ctl_hotkey'] =
         obs.obs_hotkey_inject_event(combo,false)
         obs.obs_hotkey_inject_event(combo,true)
         obs.obs_hotkey_inject_event(combo,false)
-        return true
+        show_text('  Sent Ctrl + hotkey "' .. tail .. '"')
+        return DELAYED_NEXT
     end
 
 -- Show the current streaming key
@@ -510,17 +523,17 @@ cmd_table['streamkey'] =
         local key = obs.obs_service_get_key(service)
         -- Doc for obs_frontend_get_streaming_service says "returns new reference", but
         -- calling obs.obs_service_release(service) causes a crash on second get
-        show_text( 'Streaming Key is "' .. key .. '"')
-        return true
+        show_text( '  Streaming Key is "' .. key .. '"')
+        return IMMEDIATE_NEXT
     end
 
 -- Specify the duration of the default transition.
 -- Note that the changed time may be saved in the json, affecting future runs
 cmd_table['transitiontime'] =
     function(tail)
-        show_text('Change transition time to "' .. tail .. '"')
         obs.obs_frontend_set_transition_duration( tonumber(tail) )
-        return true
+        show_text('  Changed transition time to "' .. tail .. '"')
+        return IMMEDIATE_NEXT
     end
 
 -- Cause a transition.
@@ -529,10 +542,10 @@ cmd_table['transitiontime'] =
 -- There might a be use-case where command_scene = 'none'
 cmd_table['transition'] =
     function(tail)
-        show_text('Begin Transition, taking ' .. obs.obs_frontend_get_transition_duration() .. ' msec' )
+        show_text('  Begin Transition, taking ' .. obs.obs_frontend_get_transition_duration() .. ' msec' )
         set_state(STATE_TRANSITIONING)
         obs.obs_frontend_preview_program_trigger_transition()
-        return true
+        return DELAYED_NEXT
     end
 
 -- Set the level of an audio source
@@ -548,7 +561,7 @@ cmd_table['audiolevel'] =
         if source == nil then
             return set_error('no audio source "' .. source_name .. '"')
         end
-        show_text('Set audio level of "' .. source_name .. '" to ' .. value .. ' dB')
+        show_text('  Set audio level of "' .. source_name .. '" to ' .. value .. ' dB')
 
         volume = 10.0 ^ (value/20)
         if volume > 1.0 then
@@ -558,7 +571,7 @@ cmd_table['audiolevel'] =
         obs.obs_source_set_muted(source, false)
 
         obs.obs_source_release(source)
-        return true
+        return IMMEDIATE_NEXT
     end
   
 local monther = {January=1, Jan=1, February=2, Feb=2,
@@ -586,23 +599,21 @@ cmd_table['date'] =
             local now_num = now.year*10000 + now.month*100 + now.day
             if now_num < want_num then
                 -- Before the date: wait for it
-                show_text('Waiting until ' .. tail, true)
-                return false
+                show_text('  Waiting until ' .. tail, true)
+                return DELAYED_SAME
             elseif now_num == want_num then
                 -- On the date: continue
                 show_text('Today is ' .. tail)
-                return true
+                return IMMEDIATE_NEXT
             else
                 -- After the date: stop processing
                 set_state(STATE_STOP)
                 show_text('STOPPED: today is after the specified date ' .. tail)
-                return false
+                return DELAYED_SAME
             end
         else
             return set_error('invalid date "' .. tail .. '"')
         end
-
-        return true
     end
 
 -- Verify or wait for the specified time.
@@ -612,8 +623,14 @@ cmd_table['time'] =
         local ix, iy, hour, minute = tail:find('(%d+):(%d+)')
         if hour and minute then
             local am_pm = tail:match('%s*(%w+)', iy+1)
-            if am_pm and am_pm:upper() == 'PM' then
-                hour = hour + 12
+            if am_pm then
+                if (am_pm:upper() == 'AM') and (1*hour == 12) then
+                    -- 12 AM is hour 0
+                    hour = hour - 12
+                elseif (am_pm:upper() == 'PM') and (1*hour < 12) then
+                    -- 1 to 11 PM is 13 to 23. 12 PM is just 12
+                    hour = hour + 12
+                end
             end
             local want_num = hour*60 + minute
 
@@ -621,22 +638,20 @@ cmd_table['time'] =
             local now_num = now.hour*60 + now.min
             if now_num < want_num then
                 -- Before the time: wait for it
-                show_text('Waiting until ' .. tail .. '. Now ' .. os.date('%I:%M:%S %p'), true)
-                return false
+                show_text('  Waiting until ' .. tail .. '. Now ' .. os.date('%I:%M:%S %p'), true)
+                return DELAYED_SAME
             elseif now_num < want_num + 120 then
                 -- Within a plausible window of the desired time
                 show_text('Time is on or after ' .. tail)
-                return true
+                return IMMEDIATE_NEXT
             else
                 set_state(STATE_STOP)
                 show_text('STOPPED: more than two hours after the specified time ' .. tail)
-                return false
+                return DELAYED_SAME
             end
         else
             return set_error('invalid time "' .. tail .. '"')
         end
-
-        return true
     end
 
 -- Wait a specified number of seconds
@@ -650,11 +665,11 @@ cmd_table['wait'] =
         local delta = os.time() - time_command_started
         if delta < 1*sec then
             show_text('Waiting ' .. sec .. ' seconds: ' .. delta, true)
-            return false
+            return DELAYED_SAME
         end
         
         show_text('Waited ' .. tail .. ' seconds')
-        return true
+        return IMMEDIATE_NEXT
     end
 
 -- Stop interpreting commands
@@ -662,19 +677,19 @@ cmd_table['stop'] =
     function(tail)
         set_state(STATE_STOP)
         show_text('STOPPED by command')
-        return false
+        return DELAYED_SAME
     end
 
 -- Start streaming
 cmd_table['start_streaming'] =
     function(tail)
         if obs.obs_frontend_streaming_active() then
-            show_text('Already streaming')
+            show_text('  Already streaming')
         else
             obs.obs_frontend_streaming_start()
             show_text('Started streaming')
         end
-        return true
+        return DELAYED_NEXT
     end
 
 -- Stop streaming
@@ -684,22 +699,22 @@ cmd_table['stop_streaming'] =
             obs.obs_frontend_streaming_stop()
             show_text('Stopped streaming')
         else
-            show_text('Not streaming')
+            show_text('  Not streaming')
         end
 
-        return true
+        return DELAYED_NEXT
     end
 
 -- Start recording
 cmd_table['start_recording'] =
     function(tail)
         if obs.obs_frontend_recording_active() then
-            show_text('Already recording')
+            show_text('  Already recording')
         else
             obs.obs_frontend_recording_start()
             show_text('Started recording')
         end
-        return true
+        return DELAYED_NEXT
     end
 
 -- Stop recording
@@ -709,8 +724,8 @@ cmd_table['stop_recording'] =
             obs.obs_frontend_recording_stop()
             show_text('Stopped recording')
         else
-            show_text('Not recording')
+            show_text('  Not recording')
         end
 
-        return true
+        return DELAYED_NEXT
     end
