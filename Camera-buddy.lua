@@ -1,7 +1,7 @@
 obs = obslua
 local socket = require("ljsocket")
 
-local version = "0.5"
+local version = "0.6"
 
 -- Set true to get debug printing
 local debug_print_enabled = false
@@ -428,16 +428,23 @@ function set_camera_to(camera, preset)
     local last_preset = last_cam_setting[camera]
     if (last_preset == nil) or (last_preset ~= preset) then
         -- Either first time setting this camera, or preset has changed
-        last_cam_setting[camera] = preset
-        debug_print('Set camera ' .. camera .. ' to preset ' .. preset)
-        send_command(camera, "gopreset&index=" .. preset)
+        if send_command(camera, "gopreset&index=" .. preset) then
+            debug_print('Set camera ' .. camera .. ' to preset ' .. preset)
+            last_cam_setting[camera] = preset
+        else
+            debug_print('Failed to set camera ' .. camera .. ' to preset ' .. preset)
+            -- kill "last setting" to force send on next request
+            last_cam_setting[camera] = nil
+        end
     end
 end
 
 -- Send a command over HTTP to the camera
 -- This is synchronous, so may cause frames to be dropped if the camera's
 -- response is delayed (or non-existant), but seems to work for a USB camera.
+-- Return true for success, false if send fails
 function send_command(camera, command)
+    local retval = false
     if ip_address == nil then
         local ix = string.find(ip_address_and_port, ':')
         ip_address = string.sub(ip_address_and_port, 1, ix-1)
@@ -449,41 +456,52 @@ function send_command(camera, command)
     if selector == nil then
         print('ERROR: no camera selector for "' .. camera .. '"')
     else
-        http_request(ip_address, ip_port, '/list?action=set&uvcid=' .. selector.serialnumber)
+        retval = http_request(ip_address, ip_port, '/list?action=set&uvcid=' .. selector.serialnumber)
     end
 
-    http_request(ip_address, ip_port, '/ptz?action=' .. command)
+    if retval then
+        retval = http_request(ip_address, ip_port, '/ptz?action=' .. command)
+    end
+    return retval
 end
 
 -- Send an HTTP GET request to the specified address and port
+-- Return true for success, false if connection fails
 function http_request(a_address, a_port, a_url)
     debug_print('Sending http_request "GET ' .. a_url .. '" to ' .. a_address .. ':' .. a_port)
 
     local socket = assert(socket.create("inet", "stream", "tcp"))
-    assert(socket:connect(a_address, a_port), "socket:connect failed")
+    if not socket:connect(a_address, a_port) then
+        -- We don't assert connect failure: during startup, script may run
+        -- before camera software is awake, so we just return false.
+        -- We do assert subsequent send/receive
+        print("Camera socket:connect failed")
+        return false
+    else
+        -- We use HTTP 1.0 so the server will close the session
+        assert(socket:send(
+            "GET " .. a_url .. " HTTP/1.0\r\n"..
+            "Host: " .. a_address .. ':' .. a_port .. "\r\n" ..
+            "\r\n"), "socket:send failed")
 
-    -- We use HTTP 1.0 so the server will close the session
-    assert(socket:send(
-        "GET " .. a_url .. " HTTP/1.0\r\n"..
-        "Host: " .. a_address .. ':' .. a_port .. "\r\n" ..
-        "\r\n"), "socket:send failed")
+        local chunk = assert(socket:receive(), "socket:receive failed")
+        if chunk then
+            local ix,iy = string.find(chunk, '\r\n')
+            if ix then
+                debug_print('Got ' .. string.len(chunk) .. ' bytes: "' .. string.sub(chunk, 1, ix-1) .. '"')
+            end
 
-    local chunk = assert(socket:receive(), "socket:receive failed")
-    if chunk then
-        local ix,iy = string.find(chunk, '\r\n')
-        if ix then
-            debug_print('Got ' .. string.len(chunk) .. ' bytes: "' .. string.sub(chunk, 1, ix-1) .. '"')
+            ix,iy = string.find(chunk, 'Content%-Type%: application%/json')
+            if ix then
+                -- Get the json data, or at least a chunk of it, to avoid
+                -- rude session closures.
+                chunk = assert(socket:receive(), "socket:receive failed")
+                -- debug_print('json data "' .. chunk .. '"')
+            end
         end
-
-        ix,iy = string.find(chunk, 'Content%-Type%: application%/json')
-        if ix then
-            -- Get the json data, or at least a chunk of it, to avoid
-            -- rude session closures.
-            chunk = assert(socket:receive(), "socket:receive failed")
-            -- debug_print('json data "' .. chunk .. '"')
-        end
+        assert(socket:close())
     end
-    assert(socket:close())
+    return true
 end
 
 -- Callback to end a pulsed command
