@@ -1,7 +1,7 @@
 -- AutoStream.lua - simple automated streaming
 
 local obs = obslua
-local version = '1.0'
+local version = '1.1'
 
 -- These names must match the source names used on the control scene
 local explainer_source  = 'Automatic Streamer - explainer'
@@ -17,6 +17,7 @@ local command_data = {}             -- array of lines from command file
 local command_index = 0             -- index into command_data
 local command_scene = 'none'        -- scene showing our progress
 local time_command_started = 0      -- time_t that current command started
+local label_to_index = {}           -- map between label and command index
 
   local STATE_STOPPED = 0           -- Not running
   local STATE_PAUSED  = 1           -- Paused: control scene not selected
@@ -26,7 +27,8 @@ local state = STATE_STOPPED
 
 local timer_interval_ms = 1000      -- timer poll interval
 local timer_active = false
-local log_lines = '\n\n\n\n\n\n\n\n\n'
+local clean_log_lines = '\n\n\n\n\n\n\n\n\n\n\n\n\n'
+local log_lines = clean_log_lines
 
 -- Return codes from command handlers
 local IMMEDIATE_NEXT = 0    -- execute the next command immediately
@@ -36,7 +38,7 @@ local DELAYED_SAME   = 2    -- execute the same command on the next tick
 -- Table of commands/handlers (initialized by each handler definition)
 local cmd_table = {}
 
--- Script variables set by the "let" command, used as command parameters elsewhere
+-- Script variables set by "$varname =" commands, used as command parameters elsewhere
 local variables = {}
 
 -- Description displayed in the Scripts dialog window
@@ -57,11 +59,10 @@ If you change Preview to another scene, automatic operation will be paused.
 Switching back to this scene will resume automatic operation.]]
 
 -- Set state variable, start or stop timer as appropriate
--- STOPPED  Timer stopped
--- PAUSED   Timer stopped
--- TRANS    Timer running
--- RUN      Timer running
---
+--   STOPPED  Timer stopped
+--   PAUSED   Timer stopped
+--   TRANS    Timer running
+--   RUN      Timer running
 function set_state(a_state)
     if (a_state == STATE_RUN) or (a_state == STATE_TRANSITIONING) then
         if not timer_active then
@@ -79,7 +80,7 @@ function set_state(a_state)
 end
 
 -- Log an error, set error flag
--- this may stop the command interpreter
+-- This may stop the command interpreter
 function set_error(a_text)
     print('ERROR: ' .. a_text)
 
@@ -115,6 +116,7 @@ function show_text(text, temporary)
                 log_lines = log_lines .. '\n' .. text
             end
             obs.obs_data_set_string(settings, 'text', log_lines)
+            print('show_text: ' .. text)
         end
 
         -- The OBS GDI+ source property editor shows #html color as #RRGGBB,
@@ -122,7 +124,7 @@ function show_text(text, temporary)
         -- But the saved json gets 4278190335 = 0xFF0000FF, with red as the LAST byte,
         -- and an extra FF on the top. You can edit the json to remove to top FF, and
         -- it reads back just the same.
-        -- Lua needs to used this BGR format: red = 255 / 0x0000FF, green = 0x00FF00
+        -- Lua needs to use this BGR format: red = 255 / 0x0000FF, green = 0x00FF00
         local color = 0x00FF00  -- GREEN
         if error_flag then
             color = 0x0000FF    -- RED
@@ -132,7 +134,7 @@ function show_text(text, temporary)
         obs.obs_data_release(settings)
         obs.obs_source_release(source)
     else
-        print(text)
+        print('show_text: ' .. text)
     end
 end
 
@@ -259,7 +261,7 @@ function expand_tail(a_tail)
             local var = a_tail:sub(ix+1, jx)
             local value = variables[var]
             if value == nil then
-                set_error('Unknown variable "' .. var .. '" in command tail "' .. 
+                set_error('unknown variable "' .. var .. '" in command tail "' .. 
                           a_tail .. '"')
                 -- Not clear what to return here. Hope that empty tail will
                 -- cause our caller to generate an error and stop.
@@ -291,10 +293,10 @@ function execute_line(a_line, a_line_number)
         -- Variable assignment
         local varname, value = a_line:match('%$([%w_]+)%s*%=%s*(.+)')
         if varname == nil or value == nil then
-            return set_error('Cannot parse "' .. a_line .. '" as assignment (line ' ..
+            return set_error('cannot parse "' .. (a_line or '') .. '" as assignment (line ' ..
                               a_line_number .. ')')
         end
-        show_text(varname .. ' is ' .. value)
+        show_text('  ' .. varname .. ' is ' .. value)
         variables[varname] = value
 
     elseif a_line ~= '' then
@@ -313,7 +315,7 @@ function execute_line(a_line, a_line_number)
         if entry ~=nil then
             retval = entry( expand_tail(tail) )
         else
-            return set_error('Unknown command "' .. a_line .. '" (line ' .. 
+            return set_error('unknown command "' .. a_line .. '" (line ' .. 
                               a_line_number .. ')')
         end
     end
@@ -354,7 +356,7 @@ function start_playing(a_reason)
     error_flag = false
     command_index = 0
     command_data = {}
-    log_lines = '\n\n\n\n\n\n\n\n\n'
+    log_lines = clean_log_lines
     
     if command_file == '' then
         local str = 'No command file to play'
@@ -373,10 +375,18 @@ function start_playing(a_reason)
             -- since we probably don't have a visible control scene.
             -- Showing in the script UI would also be good.
         else
+            local index = 1
             for line in infile:lines() do
                 -- Omit comments to speed up interpreter
                 if line ~= '' and line:find('#') ~= 1 then
-                    table.insert(command_data, line)
+                    if line:find(':') == 1 then
+                        -- Code label: map to index of next command
+                        label_to_index[line:sub(2)] = index
+                        print('Label "' .. line:sub(2) .. '" index ' .. index)
+                    else
+                        table.insert(command_data, line)
+                        index = index + 1
+                    end
                 end
             end
 
@@ -402,15 +412,26 @@ cmd_table['show'] =
         return IMMEDIATE_NEXT
     end
 
+-- Show current OBS profile
+cmd_table['show_profile'] =
+    function(tail)
+        local current_profile = obs.obs_frontend_get_current_profile()
+        if (tail ~= '') and (current_profile ~= tail) then
+            return set_error('expected profile "' .. tail ..
+                             '", but profile is "' .. current_profile .. '"')
+        end
+
+        show_text('Current profile is "' .. current_profile .. '"')
+        return IMMEDIATE_NEXT
+    end
+
 -- Set OBS profile, mostly to change the streaming key
-cmd_table['profile'] =
+cmd_table['set_profile'] =
     function(tail)
         obs.obs_frontend_set_current_profile(tail)
-        local newProfile = obs.obs_frontend_get_current_profile()
-        if tail ~= newProfile then
-            return set_error('can\'t change profile to "' .. tail ..
-                             '". Profile is "' .. newProfile .. '"')
-        end
+        -- An immediate call to obs_frontend_get_current_profile may return
+        -- the PREVIOUS profile. Follow "profile" with "show_profile"
+        -- to verify the profile change
 
         show_text('Changed profile to "' .. tail .. '"')
         return DELAYED_NEXT
@@ -422,7 +443,7 @@ cmd_table['preview'] =
     function(tail)
         local new_scene = obs.obs_get_scene_by_name(tail)
         if new_scene == nil then
-            return set_error('no scene called "' .. tail .. '"')
+            return set_error('no preview scene called "' .. (tail or '') .. '"')
         end
 
         show_text('Changed preview scene to "' .. tail .. '"')
@@ -438,7 +459,7 @@ cmd_table['control_scene'] =
         if tail ~= 'none' then
             local new_scene = obs.obs_get_scene_by_name(tail)
             if new_scene == nil then
-                return set_error('no scene called "' .. tail .. '"')
+                return set_error('no control scene called "' .. (tail or '') .. '"')
             end
 
             obs.obs_frontend_set_current_preview_scene(obs.obs_scene_get_source(new_scene))
@@ -456,13 +477,12 @@ cmd_table['control_text'] =
     function(tail)
         local text_source = obs.obs_get_source_by_name(tail)
         if text_source == nil then
-            return set_error('no source called "' .. tail .. '"')
+            return set_error('no text source called "' .. (tail or '') .. '"')
         end
 
         explainer_actions = tail
         obs.obs_source_release(text_source)
-
-        print('Changed control text source to "' .. tail .. '"')
+        print('  Changed control text source to "' .. tail .. '"')
         return DELAYED_NEXT
     end
 
@@ -474,7 +494,7 @@ cmd_table['program'] =
     function(tail)
         new_scene = obs.obs_get_scene_by_name(tail)
         if new_scene == nil then
-            return set_error('no scene called "' .. tail .. '"')
+            return set_error('no program scene called "' .. (tail or '') .. '"')
         end
         
         -- Stop interpreting until the transition completes and
@@ -517,13 +537,13 @@ cmd_table['ctl_hotkey'] =
     end
 
 -- Show the current streaming key
-cmd_table['streamkey'] =
+cmd_table['show_streamkey'] =
     function(tail)
         local service = obs.obs_frontend_get_streaming_service()
         local key = obs.obs_service_get_key(service)
         -- Doc for obs_frontend_get_streaming_service says "returns new reference", but
         -- calling obs.obs_service_release(service) causes a crash on second get
-        show_text( '  Streaming Key is "' .. key .. '"')
+        show_text( 'Current Streaming Key is "' .. key .. '"')
         return IMMEDIATE_NEXT
     end
 
@@ -542,7 +562,7 @@ cmd_table['transitiontime'] =
 -- There might a be use-case where command_scene = 'none'
 cmd_table['transition'] =
     function(tail)
-        show_text('  Begin Transition, taking ' .. obs.obs_frontend_get_transition_duration() .. ' msec' )
+        show_text('  Begin Transition lasting ' .. obs.obs_frontend_get_transition_duration() .. ' msec' )
         set_state(STATE_TRANSITIONING)
         obs.obs_frontend_preview_program_trigger_transition()
         return DELAYED_NEXT
@@ -553,13 +573,13 @@ cmd_table['audiolevel'] =
     function(tail)
         local pos, value = tail:match('()%s+(-*%d+)$')
         if pos == nil or value == nil then
-            return set_error('cannot parse "' .. tail .. '"')
+            return set_error('audiolevel cannot parse "' .. (tail or '') .. '"')
         end
         
         local source_name = tail:sub(1,pos-1)
         local source = obs.obs_get_source_by_name(source_name)
         if source == nil then
-            return set_error('no audio source "' .. source_name .. '"')
+            return set_error('no audio source "' .. (source_name or '') .. '"')
         end
         show_text('  Set audio level of "' .. source_name .. '" to ' .. value .. ' dB')
 
@@ -573,19 +593,47 @@ cmd_table['audiolevel'] =
         obs.obs_source_release(source)
         return IMMEDIATE_NEXT
     end
-  
-local monther = {January=1, Jan=1, February=2, Feb=2,
-                 March=3,   Mar=3, April=4,    Apr=4,
-                 May=5,              June=6,     Jun=6,
-                 July=7,    Jul=7, August=8,   Aug=8,
-                 September=9,Sep=9,October=10, Oct=10,
+
+-- If a_tail contains "else {label}", set command_index per label
+-- Else stop the interpreter
+function goto_label(a_tail)
+    local label = a_tail:match('.+%s+else%s+([%w_]+)')
+    if label then
+        if label_to_index[label] then
+            command_index = label_to_index[label] - 1
+            show_text('  Jump to ' .. label .. ' (' .. command_index + 1 .. ')')
+            return IMMEDIATE_NEXT
+        end
+    end
+
+    set_state(STATE_STOP)
+    show_text('STOPPED (no label)')
+    return DELAYED_SAME
+end
+
+-- GOTO label
+cmd_table['goto'] =
+    function(tail)
+        if tail and label_to_index[tail] then
+            command_index = label_to_index[tail] - 1
+            show_text('  Jump to ' .. tail .. ' (' .. command_index + 1 .. ')')
+            return IMMEDIATE_NEXT
+        end
+        return set_error('invalid goto "' .. (tail or '') .. '"')
+    end
+
+local monther = {January=1,  Jan=1, February=2, Feb=2,
+                 March=3,    Mar=3, April=4,    Apr=4,
+                 May=5,             June=6,     Jun=6,
+                 July=7,     Jul=7, August=8,   Aug=8,
+                 September=9,Sep=9, October=10, Oct=10,
                  November=11,Nov=11,December=12,Dec=12}
 
 -- Verify or wait for the specified date
 cmd_table['date'] =
     function(tail)
         -- Parse the tail as a date: July 24, 2022
-        local month, day, year = tail:match('(%a+)%s+(%d+),*%s*(%d+)')
+        local ix, iy, month, day, year = tail:find('(%a+)%s+(%d+),*%s*(%d+)')
         day = tonumber(day)
         year = tonumber(year)
         if month and monther[month] and
@@ -599,20 +647,19 @@ cmd_table['date'] =
             local now_num = now.year*10000 + now.month*100 + now.day
             if now_num < want_num then
                 -- Before the date: wait for it
-                show_text('  Waiting until ' .. tail, true)
+                show_text('  Waiting until ' .. tail:sub(ix,iy), true)
                 return DELAYED_SAME
             elseif now_num == want_num then
                 -- On the date: continue
-                show_text('Today is ' .. tail)
+                show_text('Today is ' .. tail:sub(ix,iy))
                 return IMMEDIATE_NEXT
             else
-                -- After the date: stop processing
-                set_state(STATE_STOP)
-                show_text('STOPPED: today is after the specified date ' .. tail)
-                return DELAYED_SAME
+                -- After the date: goto label (if any), or stop processing
+                show_text('Today is after the specified date ' .. tail:sub(ix,iy))
+                return goto_label(tail)
             end
         else
-            return set_error('invalid date "' .. tail .. '"')
+            return set_error('invalid date "' .. (tail or '') .. '"')
         end
     end
 
@@ -622,12 +669,16 @@ cmd_table['time'] =
         -- Parse the tail as a time: 8:55 or 8:55 AM; 20:55 or 8:55 PM
         local ix, iy, hour, minute = tail:find('(%d+):(%d+)')
         if hour and minute then
-            local am_pm = tail:match('%s*(%w+)', iy+1)
+            local show_want = tail:sub(ix,iy)
+
+            local am_pm = tail:match('%s*(%a+)', iy+1)
             if am_pm then
-                if (am_pm:upper() == 'AM') and (1*hour == 12) then
+                show_want = show_want .. ' ' .. am_pm
+                am_pm = string.upper(am_pm)
+                if (am_pm == 'AM') and (1*hour == 12) then
                     -- 12 AM is hour 0
-                    hour = hour - 12
-                elseif (am_pm:upper() == 'PM') and (1*hour < 12) then
+                    hour = 0
+                elseif (am_pm == 'PM') and (1*hour < 12) then
                     -- 1 to 11 PM is 13 to 23. 12 PM is just 12
                     hour = hour + 12
                 end
@@ -638,19 +689,18 @@ cmd_table['time'] =
             local now_num = now.hour*60 + now.min
             if now_num < want_num then
                 -- Before the time: wait for it
-                show_text('  Waiting until ' .. tail .. '. Now ' .. os.date('%I:%M:%S %p'), true)
+                show_text('  Waiting until ' .. show_want .. '. Now ' .. os.date('%I:%M:%S %p'), true)
                 return DELAYED_SAME
             elseif now_num < want_num + 120 then
                 -- Within a plausible window of the desired time
-                show_text('Time is on or after ' .. tail)
+                show_text('Time is on or after ' .. show_want)
                 return IMMEDIATE_NEXT
             else
-                set_state(STATE_STOP)
-                show_text('STOPPED: more than two hours after the specified time ' .. tail)
-                return DELAYED_SAME
+                show_text('More than two hours after the specified time ' .. show_want)
+                return goto_label(tail)
             end
         else
-            return set_error('invalid time "' .. tail .. '"')
+            return set_error('invalid time "' .. (tail or '') .. '"')
         end
     end
 
@@ -659,7 +709,7 @@ cmd_table['wait'] =
     function(tail)
         local sec = tail:match('(%d+)')
         if sec == nil then
-            return set_error('invalid time "' .. tail .. '"')
+            return set_error('invalid wait time "' .. (tail or '') .. '"')
         end
 
         local delta = os.time() - time_command_started
