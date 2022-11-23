@@ -1,7 +1,7 @@
 -- AutoStream.lua - simple automated streaming
 
 local obs = obslua
-local version = '1.1'
+local version = '1.2'
 
 -- These names must match the source names used on the control scene
 local explainer_source  = 'Automatic Streamer - explainer'
@@ -29,6 +29,8 @@ local timer_interval_ms = 1000      -- timer poll interval
 local timer_active = false
 local clean_log_lines = '\n\n\n\n\n\n\n\n\n\n\n\n\n'
 local log_lines = clean_log_lines
+
+local time_late_limit_minutes = 60  -- minutes after "time" to assume same event
 
 -- Return codes from command handlers
 local IMMEDIATE_NEXT = 0    -- execute the next command immediately
@@ -691,12 +693,12 @@ cmd_table['time'] =
                 -- Before the time: wait for it
                 show_text('  Waiting until ' .. show_want .. '. Now ' .. os.date('%I:%M:%S %p'), true)
                 return DELAYED_SAME
-            elseif now_num < want_num + 120 then
+            elseif now_num < want_num + time_late_limit_minutes then
                 -- Within a plausible window of the desired time
                 show_text('Time is on or after ' .. show_want)
                 return IMMEDIATE_NEXT
             else
-                show_text('More than two hours after the specified time ' .. show_want)
+                show_text('More than ' .. time_late_limit_minutes .. ' minutes after the specified time ' .. show_want)
                 return goto_label(tail)
             end
         else
