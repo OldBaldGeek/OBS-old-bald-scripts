@@ -420,7 +420,7 @@ cmd_table['show'] =
 -- * tail and "else": match profile, goto if no match
 -- * tail, no "else": match profile, ERROR if no match?
 -- * "else" alone: syntax error
-cmd_table['show_profile'] =
+cmd_table['profile'] =
     function(tail)
         local current_profile = obs.obs_frontend_get_current_profile()
         show_text('Current profile is "' .. current_profile .. '"')
