@@ -1,7 +1,7 @@
 -- AutoStream.lua - simple automated streaming
 
 local obs = obslua
-local version = '1.2'
+local version = '1.3'
 
 -- These names must match the source names used on the control scene
 local explainer_source  = 'Automatic Streamer - explainer'
@@ -415,15 +415,27 @@ cmd_table['show'] =
     end
 
 -- Show current OBS profile
+-- OPTIONS:
+-- * no tail: show profile
+-- * tail and "else": match profile, goto if no match
+-- * tail, no "else": match profile, ERROR if no match?
+-- * "else" alone: syntax error
 cmd_table['show_profile'] =
     function(tail)
         local current_profile = obs.obs_frontend_get_current_profile()
-        if (tail ~= '') and (current_profile ~= tail) then
+        show_text('Current profile is "' .. current_profile .. '"')
+
+        local desired_profile = tail:match('(.+)%s+else')
+        if desired_profile ~= nil then
+            if current_profile ~= desired_profile then
+                -- Current profile doesn't match desired: take the "else"
+                goto_label(tail)
+            end
+        elseif (tail ~= '') and (current_profile ~= tail) then
             return set_error('expected profile "' .. tail ..
                              '", but profile is "' .. current_profile .. '"')
         end
 
-        show_text('Current profile is "' .. current_profile .. '"')
         return IMMEDIATE_NEXT
     end
 
@@ -432,8 +444,8 @@ cmd_table['set_profile'] =
     function(tail)
         obs.obs_frontend_set_current_profile(tail)
         -- An immediate call to obs_frontend_get_current_profile may return
-        -- the PREVIOUS profile. Follow "profile" with "show_profile"
-        -- to verify the profile change
+        -- the PREVIOUS profile. Follow "profile" with a short delays and
+        -- "show_profile" to verify the profile change
 
         show_text('Changed profile to "' .. tail .. '"')
         return DELAYED_NEXT
@@ -698,7 +710,7 @@ cmd_table['time'] =
                 show_text('Time is on or after ' .. show_want)
                 return IMMEDIATE_NEXT
             else
-                show_text('More than ' .. time_late_limit_minutes .. ' minutes after the specified time ' .. show_want)
+                show_text('More than ' .. time_late_limit_minutes .. ' after the specified time ' .. show_want)
                 return goto_label(tail)
             end
         else
