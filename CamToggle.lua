@@ -1,5 +1,5 @@
 local obs = obslua
-local version = "0.4"
+local version = "1.1"
 
 -- Set true to get debug printing
 local debug_print_enabled = false
@@ -11,6 +11,7 @@ local stretch_factor        = 66             -- percent of fullscreen
 
 -- Identifier of the hotkey set by OBS
 local hotkey_toggle_id = obs.OBS_INVALID_HOTKEY_ID
+local hotkey_overlay_id = obs.OBS_INVALID_HOTKEY_ID
 local hotkey_clean_id  = obs.OBS_INVALID_HOTKEY_ID
 
 -- Description displayed in the Scripts dialog window
@@ -31,10 +32,15 @@ end
 function script_load(settings)
     print("CamToggle version " .. version)
 
-    -- Connect our callbacks
-    hotkey_toggle_id = obs.obs_hotkey_register_frontend("camtoggle_button", "[CamToggle]toggle", on_hotkey)
+    -- Connect our hotkey callbacks
+    hotkey_toggle_id = obs.obs_hotkey_register_frontend("camtoggle_button", "[CamToggle]toggle", on_toggle_hotkey)
     local hotkey_save_array = obs.obs_data_get_array(settings, "toggle_hotkey")
     obs.obs_hotkey_load(hotkey_toggle_id, hotkey_save_array)
+    obs.obs_data_array_release(hotkey_save_array)
+
+    hotkey_overlay_id = obs.obs_hotkey_register_frontend("camtoggle_overlay_button", "[CamToggle]overlay", on_overlay_hotkey)
+    local hotkey_save_array = obs.obs_data_get_array(settings, "overlay_hotkey")
+    obs.obs_hotkey_load(hotkey_overlay_id, hotkey_save_array)
     obs.obs_data_array_release(hotkey_save_array)
 
     hotkey_clean_id  = obs.obs_hotkey_register_frontend("camtoggle_clean_button", "[CamToggle]clean", on_clean_hotkey)
@@ -96,6 +102,10 @@ function script_save(settings)
     -- Hotkey save
     local hotkey_save_array = obs.obs_hotkey_save(hotkey_toggle_id)
     obs.obs_data_set_array(settings, "toggle_hotkey", hotkey_save_array)
+    obs.obs_data_array_release(hotkey_save_array)
+
+    hotkey_save_array = obs.obs_hotkey_save(hotkey_overlay_id)
+    obs.obs_data_set_array(settings, "overlay_hotkey", hotkey_save_array)
     obs.obs_data_array_release(hotkey_save_array)
 
     hotkey_save_array = obs.obs_hotkey_save(hotkey_clean_id)
@@ -194,14 +204,14 @@ function set_fullscreen(scene_source, stretchable_item, hideable_item)
 end
 
 -- Set stretchable source to part screen, and show hideable source.
-function restore_scene(scene_source, stretchable_item, hideable_item)
+function scale_scene(scene_source, stretchable_item, hideable_item, factor)
     local vec = obs.vec2()
     scene_width = obs.obs_source_get_width(scene_source)
     scene_height = obs.obs_source_get_height(scene_source)
 
     obs.obs_sceneitem_defer_update_begin(stretchable_item)
-    vec.x = (scene_width * stretch_factor) / 100
-    vec.y = (scene_height * stretch_factor) / 100
+    vec.x = (scene_width * factor) / 100
+    vec.y = (scene_height * factor) / 100
     obs.obs_sceneitem_set_bounds(stretchable_item, vec)
     vec.x = scene_width - vec.x
     show_sizing("Set splitscreen", scene_source, vec.x, vec.y)
@@ -213,47 +223,53 @@ function restore_scene(scene_source, stretchable_item, hideable_item)
     obs.obs_sceneitem_set_visible(hideable_item, true)
 end
 
--- Callback for the toggle hotkey
-function on_hotkey(pressed)
-    if pressed then
-        local scene_source = obs.obs_frontend_get_current_preview_scene()
-        if scene_source then
-            -- We need both a stretchable item and a hideable item
-            local current_scene = obs.obs_scene_from_source(scene_source)
-            local stretchable_item = find_sceneitem_with_id(current_scene, stretchable_source_id)
-            local hideable_item = obs.obs_scene_find_source_recursive(current_scene, hideable_source_name)
-            if stretchable_item and hideable_item then
-                if obs.obs_sceneitem_visible(hideable_item) then
-                    -- visible source means NOT fullscreen: set fullscreen
-                    set_fullscreen(scene_source, stretchable_item, hideable_item)
+-- Do hotkey actions
+function do_hotkey(the_action)
+    local scene_source = obs.obs_frontend_get_current_preview_scene()
+    if scene_source then
+        -- We need both a stretchable item and a hideable item
+        local current_scene = obs.obs_scene_from_source(scene_source)
+        local stretchable_item = find_sceneitem_with_id(current_scene, stretchable_source_id)
+        local hideable_item = obs.obs_scene_find_source_recursive(current_scene, hideable_source_name)
+        if stretchable_item and hideable_item then
+
+            if obs.obs_sceneitem_visible(hideable_item) then
+                -- visible source means NOT fullscreen: set fullscreen
+                set_fullscreen(scene_source, stretchable_item, hideable_item)
+            else
+                if the_action == "toggle" then
+                    -- Scale the stretchable, show the hideable
+                    scale_scene(scene_source, stretchable_item, hideable_item, stretch_factor)
+                elseif the_action == "overlay" then
+                    -- Scale the stretchable to 100%, show the hideable
+                    scale_scene(scene_source, stretchable_item, hideable_item, 100)
                 else
-                    -- restore from fullscreen
-                    restore_scene(scene_source, stretchable_item, hideable_item)
+                    -- "fullscreen" does nothing if already fullscreen
                 end
             end
-            obs.obs_source_release(scene_source)
         end
+        obs.obs_source_release(scene_source)
     end
 end
 
+-- Hotkey: toggle fullscreen/splitscreen
+function on_toggle_hotkey(pressed)
+    if pressed then
+        do_hotkey("toggle")
+    end
+end
+
+-- Hotkey: toggle fullscreen/overlay
+function on_overlay_hotkey(pressed)
+    if pressed then
+        do_hotkey("overlay")
+    end
+end
+
+-- Hotkey: always go fullscreen
 function on_clean_hotkey(pressed)
     if pressed then
-        local scene_source = obs.obs_frontend_get_current_preview_scene()
-        if scene_source then
-            -- We need both a stretchable item and a hideable item
-            local current_scene = obs.obs_scene_from_source(scene_source)
-            local stretchable_item = find_sceneitem_with_id(current_scene, stretchable_source_id)
-            local hideable_item = obs.obs_scene_find_source_recursive(current_scene, hideable_source_name)
-            if stretchable_item and hideable_item then
-                if obs.obs_sceneitem_visible(hideable_item) then
-                    -- visible source means NOT fullscreen: set fullscreen
-                    set_fullscreen(scene_source, stretchable_item, hideable_item)
-                else
-                    -- already fullscreen
-                end
-            end
-            obs.obs_source_release(scene_source)
-        end
+        do_hotkey("fullscreen")
     end
 end
 
