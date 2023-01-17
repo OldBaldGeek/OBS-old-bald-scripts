@@ -4,15 +4,37 @@ body {
     background: #3A393A;
     color: white;
     font-family: arial;
+    margin: 0;
+    padding: 0;
+    overflow-y:hidden;
 }
 
 .grid-container {
-    display: grid;
-    grid-template-columns: 1fr 1fr 2fr;
+    display: flex;
+    flex-direction: row;
+    height: 50%;
 }
 
 .grid-child {
-    border-right: 3px solid #4A494A;
+    border-right: 2px solid #4A494A;
+    height: 100%
+}
+
+.grid-last-child {
+    flex: 1 1 auto;
+    border-right: 2px solid #4A494A;
+    height: 100%
+}
+
+.Title {
+    font-weight: bold;
+    margin-left: 5px;
+    margin-top: 5px;
+}
+
+.ProgPrev {
+    color: #00FF00;
+    margin-left: 20px;
 }
 
 .PanTiltZoomPanel {
@@ -148,6 +170,7 @@ body {
 
 .PresetButton {
     background: #4C4C4C;
+    border-color: #E0E0E0;
     height: 27px;
     width: 100%;
     border-radius: 10px;
@@ -164,39 +187,38 @@ body {
 }
 
 .PresetArea {
-    position: relative;
-    height: 300px;
+    flex-grow: 1;
     margin-left: 3px;
     margin-right: 3px;
     margin-bottom: 3px;
 }
 
 .Status {
-    position: absolute;
-    top: 0px;
+    position: relative;
     left: 0px;
     color: white;
     font-size: 80%;
 }
 
 .Presets {
-    position: absolute;
-    top: 10%;
+    position: relative;
     left: 0px;
     width: 100%;
-    height: 90%;
+    height: 100%;
     background: #4C4C4C;
     color: white;
-    /* scrollbar-color: dark; doesn't see to have any effect in dock. May be Firefox only */
+    /* scrollbar-color: dark; As of 1/16/2023, Firefox only */
 }
 
 .SlideButton {
     background: #585758;
-    width: 45%;
+    border-color: #E0E0E0;
+    width: 23%;
     height: 30px;
     border-radius: 10px;
-    margin-left: 3px;
-    margin-bottom: 2px;
+    margin-top: 2px;
+    margin-left: 2px;
+    margin-right:0;
     color: white;
 }
 
@@ -208,19 +230,18 @@ body {
     outline: none;
 }
 
-.Title {
-    font-weight: bold;
-    margin-left: 5px;
-    margin-top: 5px;
-}
-
-.ProgPrev {
-    color: #00FF00;
+.ScrollingSlideArea {
+    max-height: 92vh;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .SlideImage {
-    width: 100%;
-    height: 100%;
+    width: 90%;
     margin-left: 3px;
-    margin-bottom: 2px;
+    margin-bottom: 0px;
+}
+
+.Statistics{
+    margin-left: 10px;
 }

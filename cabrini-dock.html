@@ -6,12 +6,13 @@
 
 <body onload="loaded()">
     <link rel="stylesheet" type="text/css" href="cabrini-dock.css">
-
     <div class="grid-container">
         <div class="grid-child">
-            <span class="Title" id="Title0">Camera 1</span>
-            <span class="ProgPrev" id="Preview0">&nbsp;&nbsp;Preview</span>
-            <span class="ProgPrev" id="Program0">&nbsp;&nbsp;Program</span>
+            <div class="Title" id="Title0">Camera 1</div>
+            <div>
+                <span class="ProgPrev" id="Preview0">Preview</span>
+                <span class="ProgPrev" id="Program0">Program</span>
+            </div>
             <div class="PanTiltZoomPanel">
                 <div class="PTZPanTiltCenter"></div>
                 <div class="PTZUp" onmousedown="do_action(0, 'up', 'start')" onmouseup="do_action(0, 'up', 'stop');"></div>
@@ -30,17 +31,20 @@
                     </div>
                 </div>
             </div>
-
             <div class="PresetArea">
-                <p class="Status" id='Status0'>Presets</p>
-                <select class="Presets" id="Presets0" size="16" onchange="do_select(0, this)"></select>
+                <div class="Status" id='Status0'>Presets</div>
+                <div>
+                    <select class="Presets" id="Presets0" size="16" onchange="do_select(0, this)"></select>
+                </div>
             </div>
         </div>
 
         <div class="grid-child">
-            <span class="Title" id="Title1">Camera 2</span>
-            <span class="ProgPrev" id="Preview1">&nbsp;&nbsp;Preview</span>
-            <span class="ProgPrev" id="Program1">&nbsp;&nbsp;Program</span>
+            <div class="Title" id="Title1">Camera 2</div>
+            <div>
+                <span class="ProgPrev" id="Preview1">Preview</span>
+                <span class="ProgPrev" id="Program1">Program</span>
+            </div>
             <div class="PanTiltZoomPanel">
                 <div class="PTZPanTiltCenter"></div>
                 <div class="PTZUp" onmousedown="do_action(1, 'up', 'start')" onmouseup="do_action(1, 'up', 'stop');"></div>
@@ -59,27 +63,36 @@
                     </div>
                 </div>
             </div>
-
             <div class="PresetArea">
-                <p class="Status" id='Status1'>Presets</p>
-                <select class="Presets" id="Presets1" size="16" onchange="do_select(1, this)"></select>
+                <div class="Status" id='Status1'>Presets</div>
+                <div>
+                    <select class="Presets" id="Presets1" size="16" onchange="do_select(1, this)"></select>
+                </div>
             </div>
         </div>
 
-        <div class="grid-child">
-            <span class="Title">Slides</span>
+        <div class="grid-last-child">
             <div>
-                <button class="SlideButton" style="margin-top:5px;" onclick="do_slides('Toggle');">Toggle Slide View</button>
-                <button class="SlideButton" onclick="do_slides('Next');">Next Slide</button>
-                <button class="SlideButton" onclick="do_slides('Reload');">Reload Slides</button>
                 <button class="SlideButton" onclick="do_slides('Previous');">Previous Slide</button>
-                <div class="SlideImage"  id="SlideImage">
-                    <canvas id="SlideCanvas">
+                <button class="SlideButton" onclick="do_slides('Next');">Next Slide</button>
+                <button class="SlideButton" onclick="do_slides('Toggle');">Toggle Slide View</button>
+                <button class="SlideButton" onclick="do_slides('Reload');">Reload Slides</button>
+            </div>
+            <div class="ScrollingSlideArea">
+                <div class="Title" id=slide1Title>1</div>
+                <div class="SlideImage" id="Slide1Image">
+                    <canvas id="Slide1Canvas">
+                </div>
+                <div class="Title" id=slide2Title>2</div>
+                <div class="SlideImage" id="Slide2Image">
+                    <canvas id="Slide2Canvas">
+                </div>
+                <div class="Title">Statistics</div>
+                    <div class="Statistics" id=stats>stats</div>
                 </div>
             </div>
         </div>
     </div>
-
     <script type="text/javascript" src="camera-data.js"></script>
     <script type="text/javascript" src="cabrini-dock.js"></script>
 </body>

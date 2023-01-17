@@ -1,19 +1,34 @@
 // All in one control dock for streaming at Cabrini by John Hartman
 // - Aver camera control
 // - slide show clickable buttons (alternative to hotkeys used by script)
+// - preview of current and next slide
+// - some basic statistics
+
+// OBS Websockets documentation
+//    https://github.com/obsproject/obs-websocket/blob/master/docs/generated/protocol.md
+// Formal definitions as a json file
+//    https://github.com/obsproject/obs-websocket/blob/master/docs/generated/protocol.json
 
 // Default address of the AVER camera server, in case we can't read the configuration file
 var g_aver_address = 'localhost:36680';
 
-// Address of the OBS Websocket server
-var g_websocket_address = "127.0.0.1:4444";
+// Address of the OBS Websocket 5.0 server
+var g_websocket_address = "127.0.0.1:4455";
 
-// Names of the OBS camera sources
+// Names of the OBS camera sources in our scene collection
 var g_cam_name0 = "Camera 1";
 var g_cam_name1 = "Camera 2";
 
-// Name of the slideshow source
+// Name of the slideshow source in our scene collection
 var g_slideshow_source_name = "SimpleSlides: music";
+
+// Slide poll rate in msec
+var g_slidePollRate = 500
+
+// Stats poll rate in msec
+// Not a multiple of g_slidePollRate, to minimize them happening at the the same time
+// on the theory that this might strain frame time
+var g_statsPollRate = 4003
 
 
 //==============================================================================
@@ -31,9 +46,6 @@ class CameraController
 
         console.log('Camera "' + this.name + '" serial "' + this.serial + '"');
         
-        //var field = document.getElementById('Title' + this.index);
-        //field.innerHTML = this.name;
-
         // Populate the preset control with scenes belonging to this camera
         var presets = cam_data.cam_presets;
         if (presets) {
@@ -232,163 +244,148 @@ function do_set_preset(a_camera)
 // Websockets interface
 
 var intervalID = 0;
-var sceneRefreshInterval = 0;
 var socketisOpen = false;
-
-var currentState =
-{
-    "previewScene": "",     // the name of the current preview scene
-    "programScene": "",     // the name of the current live scene
-}
 
 function connectWebsocket()
 {
     websocket = new WebSocket("ws://" + g_websocket_address);
     websocket.onopen = function (evt)
     {
-        socketisOpen = true;
+        console.log("websocket.onopen");
         clearInterval(intervalID);
         intervalID = 0;
+        clearInterval(slideShowTimer);
+        slideShowTimer = 0;
+        resetStats();
 
-        // Get initial program and preview values
-        sendPayload( {
-            "message-id": "get-current-scene",
-            "request-type": "GetCurrentScene" } );
-
-        sendPayload( {
-            "message-id": "get-preview-scene",
-            "request-type": "GetPreviewScene" } );
-
-        pollSlideshow();
+        socketisOpen = true;
+        console.log("websocket.onopen marked open");
     };
 
     websocket.onclose = function (evt)
     {
+        console.log('websocket.onclose');
+        document.getElementById('stats').innerHTML = "Not connected to OBS";
+
         socketisOpen = false;
+
+        clearInterval(slideShowTimer);
+        slideShowTimer = 0;
+
         if (intervalID == 0) {
             intervalID = setInterval(connectWebsocket, 5000);
-        }
-    };
-
-    websocket.onmessage = function (evt)
-    {
-        var data = JSON.parse(evt.data);
-        if (data.hasOwnProperty("message-id")) {
-            handleResponse(data)
-        } else if (data.hasOwnProperty("update-type")) {
-            handleStateChangeEvent(data)
-        } else {
-            console.log('websocket onmessage unable to handle message.', data);
         }
     };
 
     websocket.onerror = function (evt)
     {
+        // Close the socket, try again in 5 seconds: OBS may not be running.
+        console.log("websocket.onerror");
+        document.getElementById('stats').innerHTML = "Not connected to OBS";
+
         socketisOpen = false;
         if (intervalID == 0) {
             intervalID = setInterval(connectWebsocket, 5000);
         }
     };
-}
 
-function sendPayload(a_payload)
-{
-    if (socketisOpen) {
-        websocket.send(JSON.stringify(a_payload));
-    } else {
-        console.error('unable to send command. socket not open.', a_payload);
-    }
-}
+    // Received message
+    websocket.onmessage = function (evt)
+    {
+        var data = JSON.parse(evt.data);
+        if (data.hasOwnProperty("op")) {
+            switch (data.op) {
+                case 0:
+                    // Hello from server
+                    console.log('websocket Hello:', data.d.obsWebSocketVersion);
+                    
+                    // Respond, subscribing to Scene and Output events
+                    sendPayload( 1, {
+                                   "rpcVersion": data.d.rpcVersion,
+                                // "authentication": string,
+                                   "eventSubscriptions": (1<<2) + (1<<6)
+                                 } );
+                    break;
 
-function sendHotkey(a_key)
-{
-    sendPayload( {
-        "message-id": "did-hotkey",
-        "request-type": "TriggerHotkeyByName",
-        "hotkeyName": a_key } );
-}
+                case 2:
+                    // Identified
+                    console.log('websocket Identified:', data.d.negotiatedRpcVersion);
 
-// Return the name of the camera in the scene's source array, or "no camera" if none.
-function getCameraName(a_sources)
-{
-    let retval = 'no camera';
-    for (const source of a_sources) {
-        if (source.type == 'dshow_input') {
-            retval = source.name;
-            break;
+                    // Get initial program and preview scenes
+                    sendPayload( 6, { "requestType": "GetCurrentProgramScene",
+                                      "requestId": "get-program-scene"} );
+                    sendPayload( 6, { "requestType": "GetCurrentPreviewScene",
+                                      "requestId": "get-preview-scene"} );
+
+                    // Start getting slideshow data
+                    pollSlideshow();
+
+                    // Start getting stats
+                    pollStats();
+                    break;
+
+                case 5:
+                    // Event
+                    handleEvent(data.d);
+                    break;
+
+                case 7:
+                    // Response to request
+                    if (data.d.requestStatus.result) {
+                        handleResponse(data.d)
+                    } else {
+                        console.log("websocket.onmessage error:", data.d.requestId, data.d.requestStatus.code, data.d.requestStatus.comment );
+                    }
+                    break;
+
+                default:
+                    console.log('websocket onmessage: unknown opcopde.', data.op);
+                    break;
+            }
+        } else {
+            console.log('websocket onmessage: no opcopde.', data);
         }
-    }
-    
-    return retval;
+    };
 }
 
-function processProgramScene(a_data)
+// Handle an OBS event
+function handleEvent(a_data)
 {
-    if (a_data.hasOwnProperty('scene-name')) {
-        currentState.programScene = a_data['scene-name'];
-    }
-    else {
-        currentState.programScene = a_data['name'];
-    }
+    switch (a_data.eventType) {
+    case 'CurrentProgramSceneChanged':
+        processProgramScene(a_data.eventData.sceneName);
+        break;
 
-    var camera = getCameraName(a_data['sources']);
-    console.log('Program scene changed to ' + currentState.programScene + ' using ' + camera);
-    
-    var c0 = document.getElementById('Program0');
-    var c1 = document.getElementById('Program1');
-    if (camera == g_cam_name0) {
-        c0.style.visibility = 'visible';
-        c1.style.visibility = 'hidden';
-    }
-    else if (camera == g_cam_name1) {
-        c0.style.visibility = 'hidden';
-        c1.style.visibility = 'visible';
-    }
-    else {
-        c0.style.visibility = 'hidden';
-        c1.style.visibility = 'hidden';
-    }
-}
+    case 'CurrentPreviewSceneChanged':
+        processPreviewScene(a_data.eventData.sceneName);
+        break;
 
-function processPreviewScene(a_data)
-{
-    if (a_data.hasOwnProperty('scene-name')) {
-        currentState.previewScene = a_data['scene-name'];
-    }
-    else {
-        currentState.previewScene = a_data['name'];
-    }
+    // These usually come in pairs: STARTING, STARTED; STOPPING, STOPPED
+    case 'RecordStateChanged':
+        console.log('Record State changed:', a_data.eventData.outputActive, a_data.eventData.outputState);
+        break;
 
-    var camera = getCameraName(a_data['sources']);
-    console.log('Preview scene changed to ' + currentState.previewScene + ' using ' + camera);
+    // These usually come in pairs: STARTING, STARTED; STOPPING, STOPPED
+    case 'StreamStateChanged':
+        console.log('Stream State changed:', a_data.eventData.outputActive, a_data.eventData.outputState);
+        break;
 
-    var c0 = document.getElementById('Preview0');
-    var c1 = document.getElementById('Preview1');
-    if (camera == g_cam_name0) {
-        c0.style.visibility = 'visible';
-        c1.style.visibility = 'hidden';
-    }
-    else if (camera == g_cam_name1) {
-        c0.style.visibility = 'hidden';
-        c1.style.visibility = 'visible';
-    }
-    else {
-        c0.style.visibility = 'hidden';
-        c1.style.visibility = 'hidden';
+    default:
+        console.log('unhandled websocket event', a_data.eventType);
+        break;
     }
 }
 
 // Process responses to requests we sent
-function handleResponse(data)
+function handleResponse(a_data)
 {
-    const messageId = data["message-id"];
-    switch (messageId) {
-        case "get-current-scene":
-            processProgramScene(data);
+    switch (a_data.requestId) {
+        case "get-program-scene":
+            processProgramScene(a_data.responseData.currentProgramSceneName);
             break;
 
         case "get-preview-scene":
-            processPreviewScene(data);
+            processPreviewScene(a_data.responseData.currentPreviewSceneName);
             break;
             
         case "did-hotkey":
@@ -396,39 +393,122 @@ function handleResponse(data)
             break;
             
         case "get-slideshow-settings":
-            processSlideshowSettings(data);
+            processSlideshowSettings(a_data.responseData);
+            break;
+
+        case "Program":
+            processSceneSettings(a_data.responseData, a_data.requestId);
+            break;
+
+        case "Preview":
+            processSceneSettings(a_data.responseData, a_data.requestId);
+            break;
+
+        case "get-stats":
+            processStats(a_data.responseData);
             break;
 
         default:
-            console.error('handleResponse got unknown event.', data);
+            console.error('handleResponse got unknown response:', a_data.requestType, a_data.requestId);
             break;
     }
 }
 
-// Process incoming websocket messages
-function handleStateChangeEvent(a_data)
+function sendPayload(a_opcode, a_payload)
 {
-    const updateType = a_data['update-type'];
-    switch (updateType) {
-        case 'PreviewSceneChanged':
-            processPreviewScene(a_data);
-            break;
-
-        case 'SwitchScenes':
-            processProgramScene(a_data);
-            break;
-
-        default:
-            break;
+    if (socketisOpen) {
+        try {
+            pay = JSON.stringify( {"op": a_opcode, "d": a_payload } )
+            websocket.send(pay);
+        } catch (error) {
+            console.error("sendPayload threw", error);
+            websocket.close();
+        }
+    } else {
+        console.error('Unable to send command. Socket not open.', a_payload);
     }
+}
+
+function sendHotkey(a_key)
+{
+    console.log('send hotkey:', a_key);
+    sendPayload( 6, { "requestType": "TriggerHotkeyByName",
+                      "requestId": "did-hotkey",
+                      "requestData": {
+                         "hotkeyName": a_key }
+                    } );
+}
+
+// Map scene names to the camera(s) used by the scenes.
+var camera_for_scene = new Map();
+
+// Set camera indicators for this scene, or request scene data
+function doIndicators(a_scene, a_prog_prev)
+{
+    if (camera_for_scene.has(a_scene)) {
+        // We saw this scene before
+        setCameraIndicators( camera_for_scene.get(a_scene), a_prog_prev );
+    } else {
+        // Read the scene's properties. Reply will call setCameraIndicators
+        scene_awaiting_items = a_scene;
+        sendPayload( 6, { "requestType": "GetSceneItemList",
+                          "requestId": a_prog_prev,
+                          "requestData": {
+                             "sceneName": a_scene }
+                        } );
+    }
+}
+
+function setCameraIndicators(a_cameras, a_prog_prev)
+{
+    var vis0 = 'hidden';
+    var vis1 = 'hidden';
+    if (a_cameras.indexOf(g_cam_name0) >= 0) {
+        vis0 = 'visible';
+    }
+    if (a_cameras.indexOf(g_cam_name1) >= 0) {
+        vis1 = 'visible';
+    }
+
+    document.getElementById(a_prog_prev + '0').style.visibility = vis0;
+    document.getElementById(a_prog_prev + '1').style.visibility = vis1;
+}
+
+function processProgramScene(a_name)
+{
+    doIndicators(a_name, "Program");
+}
+
+function processPreviewScene(a_name)
+{
+    doIndicators(a_name, "Preview");
+}
+
+// Process the response to a request for scene settings
+function processSceneSettings(a_data, a_prog_prev)
+{
+    // Get a list of any and all cameras in the scene
+    var cams = '';
+    for (const sceneItem of a_data.sceneItems) {
+        if (sceneItem.inputKind == 'dshow_input') {
+            cams += sceneItem.sourceName + ',';
+        }
+    }
+    camera_for_scene.set(a_data.name, cams);
+    setCameraIndicators(cams, a_prog_prev);
 }
 
 //==============================================================================
 // Button to do a slideshow action
+// Names sent to sendHotKey must match those defined in SimpleSlides.lua
 function do_slides(a_action)
 {
     console.log('Slideshow ' + a_action);
     switch (a_action) {
+    case 'Hide':
+        sendHotkey("camtoggle_clean_button");
+        break;
+        
     case 'Toggle':
         sendHotkey("camtoggle_button");
         break;
@@ -451,70 +531,156 @@ function do_slides(a_action)
     }
 }
 
-// Show information about the current slide
-// We could do this after WE change slides, but there is no notification
-// of when a keyboard shortcut changes slides.
-//function showSlideInfo()
-//{
-//    sendPayload( {
-//        "message-id": "show-slide-info",
-//        "request-type": "GetSourceSettings",
-//        "sourceName": "SimpleSlides: music",
-//        "sourceType": "image_source" } );
-//}
-//
-// Add this case to handleResponse
-//        case "show-slide-info":
-//            let path = ''
-//            if (data.hasOwnProperty('sourceSettings')) {
-//                path = data['sourceSettings'].file;
-//            }
-//
-//            document.getElementById('slidePath').innerHTML = path;
-//            break;
-//
+// Get properties of the slideshow
+function pollSlideshow()
+{
+    sendPayload( 6, { "requestType": "GetInputSettings",
+                      "requestId": "get-slideshow-settings",
+                      "requestData": {
+                         "inputName": g_slideshow_source_name }
+                    } );
+}
+
+// Show name and image for current and next slides.
 var slideShowTimer = 0;
-var slideCount = 0;
 var lastSlide = "";
 function processSlideshowSettings(a_data)
 {
-    if (a_data.sourceSettings.file != lastSlide) {
-        console.log("Slide " + slideCount + " " + a_data.sourceSettings.file);
-        lastSlide = a_data.sourceSettings.file;
+    slideFile = a_data.inputSettings.file;
+    if (slideFile != lastSlide) {
+        console.log("Slide " + slideFile);
 
-        var img = new Image(); // 1280, 720);   // Create new img element
-        img.addEventListener('load', function() {
-            console.log("Draw image here for " + lastSlide);
-            console.log("Width=" + img.width + " NatWidth=" + img.naturalWidth);
+        // We can't access the directory that SimpleSlides uses for images,
+        // so we kludge by assuming
+        nextSlide = null
+        const re = /(\d*)\.png/;
+        mat = re.exec(slideFile);
+        if (mat && mat[1]) {
+            console.log('Parse as:', mat[1], mat.index);
+            nextNum = parseInt(mat[1]) + 1;
+            nextSlide = slideFile.slice(0, mat.index) + nextNum.toString().padStart(mat[1].length, '0') + '.png';
+            console.log('Next slide is', nextSlide);
+        } else {
+            console.log('No match');
+        }
 
-            // var div = document.getElementById('SlideImage');
-            // 320:180
-            // 400:225
-            // 480:270
-            // 560:315
-            // Wider canvas stretches the BUTTONS as well
+        lastSlide = slideFile;
+
+        var img1 = new Image();
+        img1.addEventListener('load', function() {
             // Limit width, and at least see the left end of the slide
-            var canvas = document.getElementById('SlideCanvas');
-            canvas.width = 400;
-            canvas.height = 315;
-            console.log("Canvas Width=" + canvas.width + " height=" + canvas.height);
+            var canvas = document.getElementById('Slide1Canvas');
+            canvas.width  = 500;
+            canvas.height = 250;
 
             var ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, 1280, 720, -20, -20, 560, 315);
+            // was ctx.drawImage(img1, 0, 0, 1280, 720, -20, -20, 560, 315);
+            // was ctx.drawImage(img1, 0, 0, 1280, 720, -20, -25, 560, 315);
+            ctx.drawImage(img1, 50, 60, 1200, 550, 0, 0, 500, 250);
         }, false);
-        img.src = "file://" + lastSlide;
+
+        document.getElementById('slide1Title').innerHTML = 'Current: ' + lastSlide;
+        img1.src = "file://" + lastSlide;
+
+        if (nextSlide) {
+            var img2 = new Image();
+            img2.addEventListener('load', function() {
+                var canvas = document.getElementById('Slide2Canvas');
+                canvas.width  = 500;
+                canvas.height = 250;
+
+                var ctx = canvas.getContext('2d');
+                ctx.drawImage(img2, 40, 60, 1200, 600, 0, 0, 500, 250);
+            }, false);
+            img2.src = "file://" + nextSlide;
+        } else {
+            nextSlide = '(unknown)';
+        }
+        document.getElementById('slide2Title').innerHTML = 'Next: ' + nextSlide;
     }
-    slideCount += 1;
 
     if (slideShowTimer == 0) {
-        slideShowTimer = setInterval(pollSlideshow, 5000);
+        slideShowTimer = setInterval(pollSlideshow, g_slidePollRate);
     }
 }
 
-function pollSlideshow()
+// Get statistics
+var statsTimer = 0;
+function pollStats()
 {
-    sendPayload( {
-        "message-id": "get-slideshow-settings",
-        "request-type": "GetSourceSettings",
-        "sourceName": g_slideshow_source_name } );
+    sendPayload( 6, { "requestType": "GetStats",
+                      "requestId": "get-stats" } );
+}
+
+var lastAverageRenderTime = 0;
+var lastAverageRenderTimeTime = "";
+var lastRenderSkip = 0;
+var lastRenderSkipTime = "";
+var lastOutputSkip = 0;
+var lastOutputSkipTime = "";
+
+// This is a full reset, when we have just connected and have no history.
+// TODO: we may also want a "relative" reset that would remember skip and count
+// values at the time of reset, and subtract them from the displayed values.
+function resetStats()
+{
+    lastAverageRenderTime = 0;
+    lastAverageRenderTimeTime = "";
+    lastRenderSkip = 0;
+    lastRenderSkipTime = "";
+    lastOutputSkip = 0;
+    lastOutputSkipTime = "";
+}
+
+function processStats(a_data)
+{
+    var str = 'CPU usage: ' + parseFloat(a_data.cpuUsage).toFixed(1) + '%<br>';
+
+    var renderTime = parseFloat(a_data.averageFrameRenderTime);
+    if (renderTime > lastAverageRenderTime) {
+        lastAverageRenderTime = renderTime;
+
+        var d = new Date;
+        lastAverageRenderTimeTime = '. Maximum ' + renderTime.toFixed(1) +
+                                    ' msec at ' + d.toLocaleTimeString();
+
+    }
+    str += 'Average frame render time: ' + renderTime.toFixed(1) + ' msec' +
+            lastAverageRenderTimeTime + '<br>';
+
+    var delta = a_data.renderSkippedFrames - lastRenderSkip;
+    if (delta != 0) {
+        lastRenderSkip = a_data.renderSkippedFrames;
+        var d = new Date;
+        if (delta == 1) {
+            lastRenderSkipTime = '. Last skip at ' + d.toLocaleTimeString();
+        } else {
+            lastRenderSkipTime = '. Last skip: ' + delta + ' frames at ' + 
+                                 d.toLocaleTimeString();
+        }
+    }
+    str += 'Skipped/Rendered: ' + 
+            a_data.renderSkippedFrames + ' / ' + a_data.renderTotalFrames + 
+            lastRenderSkipTime + '<br>';
+    
+    delta = a_data.outputSkippedFrames - lastOutputSkip;
+    if (delta != 0) {
+        lastOutputSkip = a_data.outputSkippedFrames;
+        var d = new Date;
+        if (delta == 1) {
+            lastOutputSkipTime = '. Last skip at ' + d.toLocaleTimeString();
+        } else {
+            lastOutputSkipTime = '. Last skip: ' + delta + ' frames at ' + 
+                                 d.toLocaleTimeString();
+        }
+    }
+    str += 'Skipped/Output: ' + 
+            a_data.outputSkippedFrames + ' / ' + a_data.outputTotalFrames +
+            lastOutputSkipTime + '<br>';
+
+    document.getElementById('stats').innerHTML = str;
+
+    if (statsTimer == 0) {
+        statsTimer = setInterval(pollStats, g_statsPollRate);
+    }
 }
