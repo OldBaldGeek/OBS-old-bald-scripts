@@ -19,8 +19,9 @@ var g_websocket_address = "127.0.0.1:4455";
 var g_cam_name0 = "Camera 1";
 var g_cam_name1 = "Camera 2";
 
-// Name of the slideshow source in our scene collection
-var g_slideshow_source_name = "SimpleSlides: music";
+// The name of a GDI Text source that SimpleSlides.lua uses to tell us
+// the names of the current and next slides.
+var g_slide_info_source = "SimpleSlides_info"
 
 // Slide poll rate in msec
 var g_slidePollRate = 500
@@ -29,7 +30,6 @@ var g_slidePollRate = 500
 // Not a multiple of g_slidePollRate, to minimize them happening at the the same time
 // on the theory that this might strain frame time
 var g_statsPollRate = 4003
-
 
 //==============================================================================
 // String shown above the preset lists when no action is in progress
@@ -537,8 +537,22 @@ function pollSlideshow()
     sendPayload( 6, { "requestType": "GetInputSettings",
                       "requestId": "get-slideshow-settings",
                       "requestData": {
-                         "inputName": g_slideshow_source_name }
+                         "inputName": g_slide_info_source }
                     } );
+}
+
+// Draw an image
+function myDrawImage(a_element, a_image)
+{
+    // Limit width, and at least see the left end of the slide
+    var canvas = document.getElementById(a_element);
+    canvas.width  = 500;
+    canvas.height = 250;
+
+    var ctx = canvas.getContext('2d');
+    // was ctx.drawImage(img1, 0, 0, 1280, 720, -20, -20, 560, 315);
+    // was ctx.drawImage(img1, 0, 0, 1280, 720, -20, -25, 560, 315);
+    ctx.drawImage(a_image, 50, 60, 1200, 550, 0, 0, 500, 250);
 }
 
 // Show name and image for current and next slides.
@@ -546,57 +560,37 @@ var slideShowTimer = 0;
 var lastSlide = "";
 function processSlideshowSettings(a_data)
 {
-    slideFile = a_data.inputSettings.file;
+    var slideFile = a_data.inputSettings.text;
+    var nextFile  = a_data.inputSettings.next;
+
     if (slideFile != lastSlide) {
         console.log("Slide " + slideFile);
-
-        // We can't access the directory that SimpleSlides uses for images,
-        // so we kludge by assuming
-        nextSlide = null
-        const re = /(\d*)\.png/;
-        mat = re.exec(slideFile);
-        if (mat && mat[1]) {
-            console.log('Parse as:', mat[1], mat.index);
-            nextNum = parseInt(mat[1]) + 1;
-            nextSlide = slideFile.slice(0, mat.index) + nextNum.toString().padStart(mat[1].length, '0') + '.png';
-            console.log('Next slide is', nextSlide);
-        } else {
-            console.log('No match');
-        }
+        console.log('nextFile is', nextFile);
 
         lastSlide = slideFile;
 
         var img1 = new Image();
-        img1.addEventListener('load', function() {
-            // Limit width, and at least see the left end of the slide
-            var canvas = document.getElementById('Slide1Canvas');
-            canvas.width  = 500;
-            canvas.height = 250;
+        img1.addEventListener('load',
+                              function() {
+                                  myDrawImage('Slide1Canvas', img1);
+                              },
+                              false);
+        img1.src = "file://" + slideFile;
+        document.getElementById('slide1Title').innerHTML = 'Current: ' + slideFile;
 
-            var ctx = canvas.getContext('2d');
-            // was ctx.drawImage(img1, 0, 0, 1280, 720, -20, -20, 560, 315);
-            // was ctx.drawImage(img1, 0, 0, 1280, 720, -20, -25, 560, 315);
-            ctx.drawImage(img1, 50, 60, 1200, 550, 0, 0, 500, 250);
-        }, false);
-
-        document.getElementById('slide1Title').innerHTML = 'Current: ' + lastSlide;
-        img1.src = "file://" + lastSlide;
-
-        if (nextSlide) {
-            var img2 = new Image();
-            img2.addEventListener('load', function() {
-                var canvas = document.getElementById('Slide2Canvas');
-                canvas.width  = 500;
-                canvas.height = 250;
-
-                var ctx = canvas.getContext('2d');
-                ctx.drawImage(img2, 40, 60, 1200, 600, 0, 0, 500, 250);
-            }, false);
-            img2.src = "file://" + nextSlide;
+        var img2 = new Image();
+        if (nextFile) {
+            img2.addEventListener('load',
+                                  function() {
+                                      myDrawImage('Slide2Canvas', img2);
+                                  },
+                                  false);
+            img2.src = "file://" + nextFile;
         } else {
-            nextSlide = '(unknown)';
+            nextFile = '(none)';
+            myDrawImage('Slide2Canvas', img2);
         }
-        document.getElementById('slide2Title').innerHTML = 'Next: ' + nextSlide;
+        document.getElementById('slide2Title').innerHTML = 'Next: ' + nextFile;
     }
 
     if (slideShowTimer == 0) {
