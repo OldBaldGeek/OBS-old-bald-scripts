@@ -31,7 +31,7 @@ Microsoft PowerToys to rescale all the images to 1280x720, eliminating the drop.
 
 obs = obslua
 
-local version = "0.4"
+local version = "1.1"
 
 -- Set true to get debug printing
 local debug_print_enabled = false
@@ -47,7 +47,11 @@ local allowed_filetypes = {
     ["bmp"] = true,
     ["gif"] = true,
 }
-    
+
+-- The name of a GDI Text source uses to tell a Websockets client the
+-- names of the current and next slides.
+local web_socket_interface_source = "SimpleSlides_info"
+
 -- A table of slide show data, indexed by Source name.
 -- Each entry contains a sorted list of filenames, and the index of the current slide.
 local slide_shows = {}
@@ -456,6 +460,11 @@ function do_slide(label, action)
 
                 show['current_slide'] = current_slide
                 local new_filename = filenames[current_slide]
+                local next_filename = ''
+                if current_slide < #filenames then
+                    next_filename = filenames[current_slide+1]
+                end
+
                 local current_filename = ''
 
                 local nowSettings = obs.obs_source_get_settings(source)
@@ -474,6 +483,45 @@ function do_slide(label, action)
                     obs.obs_data_release(settings)
 
                     print( "File[" .. current_slide .. "] for " .. active_source_name .. ' is ' .. new_filename)
+
+                    -- Use a Text source to tell a Websocket client the name
+                    -- of the current and next image file.
+                    local socket_source = obs.obs_get_source_by_name(web_socket_interface_source)
+                    if socket_source == nil then
+                        -- Make a new source
+                        local JSON_DATA = [[
+                        {
+                        "bk_opacity":77,
+                        "font":{"face":"Arial",
+                          "flags":0,
+                          "size":40,
+                          "style":"Regular"},
+                        "text":"xxx"
+                        }
+                        ]]
+
+                        local socket_settings = obs.obs_data_create_from_json(JSON_DATA)
+                        obs.obs_data_set_string(socket_settings, "text", new_filename)
+                        obs.obs_data_set_string(socket_settings, "next", next_filename)
+                        socket_source = obs.obs_source_create( 'text_gdiplus', web_socket_interface_source, socket_settings, nil)
+                        if socket_source then
+                            print( "Made websocket interface source " .. web_socket_interface_source)
+                        else
+                            print( "FAILED to make websocket interface source " .. web_socket_interface_source)
+                        end
+                        obs.obs_data_release(socket_settings)
+                        -- DO NOT release the source, or it will be deleted.
+                        -- We COULD delete it at shutdown if we don't want it to persist.
+                    else
+                        local socket_settings = obs.obs_data_create()
+                        obs.obs_data_set_string(socket_settings, "text", new_filename)
+                        obs.obs_data_set_string(socket_settings, "next", next_filename)
+                        obs.obs_source_update(socket_source, socket_settings)
+                        print( "Updated websocket interface source " .. web_socket_interface_source)
+
+                        obs.obs_data_release(socket_settings)
+                        obs.obs_source_release(socket_source)
+                    end
                 end
 
                 obs.obs_source_release(source)
