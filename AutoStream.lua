@@ -1,7 +1,7 @@
 -- AutoStream.lua - simple automated streaming
 
 local obs = obslua
-local version = '1.3'
+local version = '1.4'
 
 -- These names must match the source names used on the control scene
 local explainer_source  = 'Automatic Streamer - explainer'
@@ -27,6 +27,7 @@ local state = STATE_STOPPED
 
 local timer_interval_ms = 1000      -- timer poll interval
 local timer_active = false
+local callback_active = false
 local clean_log_lines = '\n\n\n\n\n\n\n\n\n\n\n\n\n'
 local log_lines = clean_log_lines
 
@@ -71,6 +72,15 @@ function set_state(a_state)
             obs.timer_add(timer_callback, timer_interval_ms)
             timer_active = true
         end
+
+        if not callback_active then
+            obs.obs_frontend_add_event_callback(handle_frontend_event)
+            callback_active = true
+        end
+
+    elseif (a_state == STATE_STOP) and callback_active then
+        obs.obs_frontend_remove_event_callback(handle_frontend_event)
+        callback_active = false
     else
         if timer_active then
             obs.timer_remove(timer_callback)
@@ -155,18 +165,17 @@ end
 -- Called to set default values of edited/persisted data
 -- (Called by framework BEFORE script_load)
 function script_defaults(settings)
-    print("script_defaults")
+    -- print("script_defaults")
 end
 
 -- Called at script load
 function script_load(settings)
     print("script_load")
-    obs.obs_frontend_add_event_callback(handle_frontend_event)
 end
 
 -- Called at script unload
 function script_unload()
-    print("script_unload")
+    -- print("script_unload")
 end
 
 -- Called after change of settings including once after script load
@@ -178,7 +187,7 @@ end
 
 -- Called before data settings are saved
 function script_save(settings)
-    print("script_save")
+    -- print("script_save")
 end
 
 -- Called to display the properties GUI
@@ -198,7 +207,7 @@ end
 
 function handle_frontend_event(event)
     if event == obs.OBS_FRONTEND_EVENT_PREVIEW_SCENE_CHANGED then
-        print("OBS_FRONTEND_EVENT_PREVIEW_SCENE_CHANGED")
+        -- print("OBS_FRONTEND_EVENT_PREVIEW_SCENE_CHANGED")
 
         if state == STATE_TRANSITIONING then
             if command_scene ~= 'none' then
@@ -384,7 +393,7 @@ function start_playing(a_reason)
                     if line:find(':') == 1 then
                         -- Code label: map to index of next command
                         label_to_index[line:sub(2)] = index
-                        print('Label "' .. line:sub(2) .. '" index ' .. index)
+                        -- print('Label "' .. line:sub(2) .. '" index ' .. index)
                     else
                         table.insert(command_data, line)
                         index = index + 1
@@ -393,7 +402,7 @@ function start_playing(a_reason)
             end
 
             infile:close()
-            print('Command File ' .. command_file .. ' has ' .. table.getn(command_data) .. ' lines')
+            -- print('Command File ' .. command_file .. ' has ' .. table.getn(command_data) .. ' lines')
 
             -- Start the timer that plays the commands
             command_scene = 'none'
@@ -529,7 +538,7 @@ cmd_table['hotkey'] =
         local combo = obs.obs_key_combination()
         combo.modifiers = 0
         combo.key = obs.obs_key_from_name(tail)
-        print(combo.key)
+        -- print(combo.key)
         obs.obs_hotkey_inject_event(combo,false)
         obs.obs_hotkey_inject_event(combo,true)
         obs.obs_hotkey_inject_event(combo,false)
@@ -542,7 +551,7 @@ cmd_table['ctl_hotkey'] =
         local combo = obs.obs_key_combination()
         combo.modifiers = obs.INTERACT_CONTROL_KEY
         combo.key = obs.obs_key_from_name(tail)
-        print(combo.key)
+        -- print(combo.key)
         obs.obs_hotkey_inject_event(combo,false)
         obs.obs_hotkey_inject_event(combo,true)
         obs.obs_hotkey_inject_event(combo,false)
