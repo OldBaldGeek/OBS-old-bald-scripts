@@ -15,6 +15,9 @@ var g_aver_address = 'localhost:36680';
 // Address of the OBS Websocket 5.0 server
 var g_websocket_address = "127.0.0.1:4455";
 
+// Reconnection attempt interval
+var g_connectInterval = 5000
+
 // Names of the OBS camera sources in our scene collection
 var g_cam_name0 = "Camera 1";
 var g_cam_name1 = "Camera 2";
@@ -165,7 +168,9 @@ function loaded()
 
     // Start the Websocket interface
     window.addEventListener("load", connectWebsocket, false);
-    connectWebsocket();
+
+    // Wait a bit to let OBS get ready before connecting
+    intervalID = setTimeout(connectWebsocket, g_connectInterval);
 }
 
 // Start or stop an action, usually based on mouse button down/up
@@ -248,23 +253,22 @@ var socketisOpen = false;
 
 function connectWebsocket()
 {
+    console.log("New websocket at " + Date.now());
     websocket = new WebSocket("ws://" + g_websocket_address);
     websocket.onopen = function (evt)
     {
-        console.log("websocket.onopen");
-        clearInterval(intervalID);
+        console.log("websocket.onopen at " + Date.now());
+        clearTimeout(intervalID);
         intervalID = 0;
-        clearInterval(slideShowTimer);
-        slideShowTimer = 0;
+
         resetStats();
 
         socketisOpen = true;
-        console.log("websocket.onopen marked open");
     };
 
     websocket.onclose = function (evt)
     {
-        console.log('websocket.onclose');
+        console.log("websocket.onclose at " + Date.now());
         document.getElementById('stats').innerHTML = "Not connected to OBS";
 
         socketisOpen = false;
@@ -272,20 +276,21 @@ function connectWebsocket()
         clearInterval(slideShowTimer);
         slideShowTimer = 0;
 
-        if (intervalID == 0) {
-            intervalID = setInterval(connectWebsocket, 5000);
-        }
+        clearInterval(statsTimer);
+        statsTimer = 0;
+
+        clearTimeout(intervalID);
+        intervalID = setTimeout(connectWebsocket, g_connectInterval);
     };
 
     websocket.onerror = function (evt)
     {
         // Close the socket, try again in 5 seconds: OBS may not be running.
-        console.log("websocket.onerror");
-        document.getElementById('stats').innerHTML = "Not connected to OBS";
-
-        socketisOpen = false;
-        if (intervalID == 0) {
-            intervalID = setInterval(connectWebsocket, 5000);
+        if (socketisOpen) {
+            console.log("websocket.onerror after full open " + Date.now());
+            websocket.close();
+        } else {
+            console.log("websocket.onerror during connection attempt at " + Date.now());
         }
     };
 
@@ -318,10 +323,14 @@ function connectWebsocket()
                                       "requestId": "get-preview-scene"} );
 
                     // Start getting slideshow data
-                    pollSlideshow();
+                    if (slideShowTimer == 0) {
+                        slideShowTimer = setInterval(pollSlideshow, g_slidePollRate);
+                    }
 
                     // Start getting stats
-                    pollStats();
+                    if (statsTimer == 0) {
+                        statsTimer = setInterval(pollStats, g_statsPollRate);
+                    }
                     break;
 
                 case 5:
@@ -564,9 +573,6 @@ function processSlideshowSettings(a_data)
     var nextFile  = a_data.inputSettings.next;
 
     if (slideFile != lastSlide) {
-        console.log("Slide " + slideFile);
-        console.log('nextFile is', nextFile);
-
         lastSlide = slideFile;
 
         var img1 = new Image();
@@ -592,9 +598,57 @@ function processSlideshowSettings(a_data)
         }
         document.getElementById('slide2Title').innerHTML = 'Next: ' + nextFile;
     }
+}
 
-    if (slideShowTimer == 0) {
-        slideShowTimer = setInterval(pollSlideshow, g_slidePollRate);
+// Track skipped/los frames
+class FrameStats
+{
+    constructor(a_name) {
+        this.name = a_name;
+        this.lastSkip = 0;
+        this.lastTotal = 0;
+        this.lastSkip_base = 0;
+        this.lastTotal_base = 0;
+        this.lastSkipTime = "";
+    }
+
+    // Total reset, as after a new websocket connection
+    reinitialize() {
+        this.lastSkip = 0;
+        this.lastTotal = 0;
+        this.lastSkip_base = 0;
+        this.lastTotal_base = 0;
+        this.lastSkipTime = "";
+    }
+
+    // UI reset, so viewed values start over from 0
+    reset() {
+        this.lastSkip_base  = this.lastSkip;
+        this.lastTotal_base = this.lastTotal;
+        this.lastSkipTime = "";
+    }
+
+    // Update with new data, return a string with results
+    update(a_skipped, a_total)
+    {
+        var delta = a_skipped - this.lastSkip;
+        if (delta != 0) {
+            var d = new Date;
+            if (delta == 1) {
+                this.lastSkipTime = '.   Last skip at ' + d.toLocaleTimeString();
+            } else {
+                this.lastSkipTime = '.   Last skip: ' + delta + ' frames at ' +
+                                     d.toLocaleTimeString();
+            }
+        }
+
+        this.lastSkip = a_skipped;
+        this.lastTotal = a_total;
+        return this.name +
+               (a_skipped - this.lastSkip_base) +
+               ' / ' +
+               (a_total - this.lastTotal_base) +
+               this.lastSkipTime + '<br>';
     }
 }
 
@@ -608,22 +662,31 @@ function pollStats()
 
 var lastAverageRenderTime = 0;
 var lastAverageRenderTimeTime = "";
-var lastRenderSkip = 0;
-var lastRenderSkipTime = "";
-var lastOutputSkip = 0;
-var lastOutputSkipTime = "";
+
+var renderStats = new FrameStats('Skipped/Rendered: ');
+var outputStats = new FrameStats('Skipped/Output: ');
+
 
 // This is a full reset, when we have just connected and have no history.
-// TODO: we may also want a "relative" reset that would remember skip and count
-// values at the time of reset, and subtract them from the displayed values.
 function resetStats()
 {
     lastAverageRenderTime = 0;
     lastAverageRenderTimeTime = "";
-    lastRenderSkip = 0;
-    lastRenderSkipTime = "";
-    lastOutputSkip = 0;
-    lastOutputSkipTime = "";
+
+    renderStats.reinitialize();
+    outputStats.reinitialize();
+}
+
+// Pseudo-reset from UI
+function reset_stats()
+{
+    lastAverageRenderTime = 0;
+    lastAverageRenderTimeTime = "";
+    renderStats.reset();
+    outputStats.reset();
+
+    // Update the displayed data
+    pollStats();
 }
 
 function processStats(a_data)
@@ -635,46 +698,15 @@ function processStats(a_data)
         lastAverageRenderTime = renderTime;
 
         var d = new Date;
-        lastAverageRenderTimeTime = '. Maximum ' + renderTime.toFixed(1) +
+        lastAverageRenderTimeTime = '.   Maximum ' + renderTime.toFixed(1) +
                                     ' msec at ' + d.toLocaleTimeString();
 
     }
     str += 'Average frame render time: ' + renderTime.toFixed(1) + ' msec' +
             lastAverageRenderTimeTime + '<br>';
 
-    var delta = a_data.renderSkippedFrames - lastRenderSkip;
-    if (delta != 0) {
-        lastRenderSkip = a_data.renderSkippedFrames;
-        var d = new Date;
-        if (delta == 1) {
-            lastRenderSkipTime = '. Last skip at ' + d.toLocaleTimeString();
-        } else {
-            lastRenderSkipTime = '. Last skip: ' + delta + ' frames at ' + 
-                                 d.toLocaleTimeString();
-        }
-    }
-    str += 'Skipped/Rendered: ' + 
-            a_data.renderSkippedFrames + ' / ' + a_data.renderTotalFrames + 
-            lastRenderSkipTime + '<br>';
-    
-    delta = a_data.outputSkippedFrames - lastOutputSkip;
-    if (delta != 0) {
-        lastOutputSkip = a_data.outputSkippedFrames;
-        var d = new Date;
-        if (delta == 1) {
-            lastOutputSkipTime = '. Last skip at ' + d.toLocaleTimeString();
-        } else {
-            lastOutputSkipTime = '. Last skip: ' + delta + ' frames at ' + 
-                                 d.toLocaleTimeString();
-        }
-    }
-    str += 'Skipped/Output: ' + 
-            a_data.outputSkippedFrames + ' / ' + a_data.outputTotalFrames +
-            lastOutputSkipTime + '<br>';
+    str += renderStats.update(a_data.renderSkippedFrames, a_data.renderTotalFrames);
+    str += outputStats.update(a_data.outputSkippedFrames, a_data.outputTotalFrames);
 
     document.getElementById('stats').innerHTML = str;
-
-    if (statsTimer == 0) {
-        statsTimer = setInterval(pollStats, g_statsPollRate);
-    }
 }

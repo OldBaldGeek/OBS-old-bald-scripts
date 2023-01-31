@@ -34,15 +34,15 @@ body {
 
 .ProgPrev {
     color: #00FF00;
-    margin-left: 20px;
+    margin-left: 5px;
 }
 
 .PanTiltZoomPanel {
     position: relative;
-    top: 5px;
+    top: 2px;
     left: 3px;
     width: 220px;
-    height: 95px;
+    height: 93px;
 }
 
 .PTZPanTiltCenter {
@@ -52,7 +52,7 @@ body {
     width: 23px;
     height: 27px;
     background: #454545;
-    z-index: 10;
+    z-index: 1;
 }
 
 .PTZUp {
@@ -98,7 +98,7 @@ body {
     width: 37px;
     height: 27px;
     background: url("images/left_up.svg") no-repeat;
-    z-index: 9;
+    z-index: 10;
 }
 
 .PTZLeft:hover {
@@ -116,7 +116,7 @@ body {
     width: 37px;
     height: 27px;
     background: url("images/right_up.svg") no-repeat;
-    z-index: 9;
+    z-index: 10;
 }
 
 .PTZRight:hover {
