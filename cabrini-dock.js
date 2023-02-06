@@ -22,9 +22,9 @@ var g_connectInterval = 5000
 var g_cam_name0 = "Camera 1";
 var g_cam_name1 = "Camera 2";
 
-// The name of a GDI Text source that SimpleSlides.lua uses to tell us
-// the names of the current and next slides.
-var g_slide_info_source = "SimpleSlides_info"
+// The name of the image source that SimpleSlides.lua uses to show slides,
+// and to tell us the names of the current and next slides.
+var g_slide_info_source = "SimpleSlides: music"
 
 // Slide poll rate in msec
 var g_slidePollRate = 500
@@ -40,7 +40,8 @@ var default_status = 'Presets';
 
 class CameraController
 {
-    constructor(a_index, a_name, a_serial) {
+    constructor(a_index, a_name, a_serial)
+    {
         this.index = a_index;
         this.name = a_name;
         this.serial = a_serial;
@@ -334,12 +335,12 @@ function connectWebsocket()
                     break;
 
                 case 5:
-                    // Event
+                    // Event from OBS
                     handleEvent(data.d);
                     break;
 
                 case 7:
-                    // Response to request
+                    // Response to a previous request
                     if (data.d.requestStatus.result) {
                         handleResponse(data.d)
                     } else {
@@ -497,6 +498,8 @@ function processPreviewScene(a_name)
 function processSceneSettings(a_data, a_prog_prev)
 {
     // Get a list of any and all cameras in the scene
+    // NOTE: not recursive, so won't find cameras in scenes being used
+    // as sources by this scene.
     var cams = '';
     for (const sceneItem of a_data.sceneItems) {
         if (sceneItem.inputKind == 'dshow_input') {
@@ -559,8 +562,6 @@ function myDrawImage(a_element, a_image)
     canvas.height = 250;
 
     var ctx = canvas.getContext('2d');
-    // was ctx.drawImage(img1, 0, 0, 1280, 720, -20, -20, 560, 315);
-    // was ctx.drawImage(img1, 0, 0, 1280, 720, -20, -25, 560, 315);
     ctx.drawImage(a_image, 50, 60, 1200, 550, 0, 0, 500, 250);
 }
 
@@ -569,8 +570,8 @@ var slideShowTimer = 0;
 var lastSlide = "";
 function processSlideshowSettings(a_data)
 {
-    var slideFile = a_data.inputSettings.text;
-    var nextFile  = a_data.inputSettings.next;
+    var slideFile = a_data.inputSettings.file;
+    var nextFile  = a_data.inputSettings.next_file;
 
     if (slideFile != lastSlide) {
         lastSlide = slideFile;
@@ -603,7 +604,8 @@ function processSlideshowSettings(a_data)
 // Track skipped/los frames
 class FrameStats
 {
-    constructor(a_name) {
+    constructor(a_name)
+    {
         this.name = a_name;
         this.lastSkip = 0;
         this.lastTotal = 0;
@@ -613,7 +615,8 @@ class FrameStats
     }
 
     // Total reset, as after a new websocket connection
-    reinitialize() {
+    reinitialize()
+    {
         this.lastSkip = 0;
         this.lastTotal = 0;
         this.lastSkip_base = 0;
@@ -622,7 +625,8 @@ class FrameStats
     }
 
     // UI reset, so viewed values start over from 0
-    reset() {
+    reset()
+    {
         this.lastSkip_base  = this.lastSkip;
         this.lastTotal_base = this.lastTotal;
         this.lastSkipTime = "";
@@ -635,9 +639,9 @@ class FrameStats
         if (delta != 0) {
             var d = new Date;
             if (delta == 1) {
-                this.lastSkipTime = '.   Last skip at ' + d.toLocaleTimeString();
+                this.lastSkipTime = '.&nbsp;&nbsp;&nbsp;Last skip at ' + d.toLocaleTimeString();
             } else {
-                this.lastSkipTime = '.   Last skip: ' + delta + ' frames at ' +
+                this.lastSkipTime = '.&nbsp;&nbsp;&nbsp;Last skip: ' + delta + ' frames at ' +
                                      d.toLocaleTimeString();
             }
         }
@@ -646,7 +650,7 @@ class FrameStats
         this.lastTotal = a_total;
         return this.name +
                (a_skipped - this.lastSkip_base) +
-               ' / ' +
+               ' of ' +
                (a_total - this.lastTotal_base) +
                this.lastSkipTime + '<br>';
     }
@@ -660,18 +664,23 @@ function pollStats()
                       "requestId": "get-stats" } );
 }
 
-var lastAverageRenderTime = 0;
-var lastAverageRenderTimeTime = "";
+var maxCPU_usage= 0;
+var maxCPU_usageTime = "";
 
-var renderStats = new FrameStats('Skipped/Rendered: ');
-var outputStats = new FrameStats('Skipped/Output: ');
+var maxAverageRenderTime = 0;
+var maxAverageRenderTimeTime = "";
 
+var renderStats = new FrameStats('Render skipped ');
+var outputStats = new FrameStats('Output skipped ');
 
 // This is a full reset, when we have just connected and have no history.
 function resetStats()
 {
-    lastAverageRenderTime = 0;
-    lastAverageRenderTimeTime = "";
+    maxCPU_usage = 0;
+    maxCPU_usageTime = "";
+
+    maxAverageRenderTime = 0;
+    maxAverageRenderTimeTime = "";
 
     renderStats.reinitialize();
     outputStats.reinitialize();
@@ -680,8 +689,10 @@ function resetStats()
 // Pseudo-reset from UI
 function reset_stats()
 {
-    lastAverageRenderTime = 0;
-    lastAverageRenderTimeTime = "";
+    maxCPU_usage = 0;
+    maxCPU_usageTime = "";
+    maxAverageRenderTime = 0;
+    maxAverageRenderTimeTime = "";
     renderStats.reset();
     outputStats.reset();
 
@@ -691,19 +702,27 @@ function reset_stats()
 
 function processStats(a_data)
 {
-    var str = 'CPU usage: ' + parseFloat(a_data.cpuUsage).toFixed(1) + '%<br>';
+    var cpuUsage = parseFloat(a_data.cpuUsage);
+    if (cpuUsage > maxCPU_usage) {
+        maxCPU_usage = cpuUsage
+        var d = new Date;
+
+        maxCPU_usageTime = '.&nbsp;&nbsp;&nbsp;Maximum ' + cpuUsage.toFixed(1) +
+                           '&percnt; at ' + d.toLocaleTimeString();
+    }
+    var str = 'CPU usage ' + cpuUsage.toFixed(1) + '&percnt;' +
+              maxCPU_usageTime + '<br>';
 
     var renderTime = parseFloat(a_data.averageFrameRenderTime);
-    if (renderTime > lastAverageRenderTime) {
-        lastAverageRenderTime = renderTime;
+    if (renderTime > maxAverageRenderTime) {
+        maxAverageRenderTime = renderTime;
 
         var d = new Date;
-        lastAverageRenderTimeTime = '.   Maximum ' + renderTime.toFixed(1) +
-                                    ' msec at ' + d.toLocaleTimeString();
-
+        maxAverageRenderTimeTime = '.&nbsp;&nbsp;&nbsp;Maximum ' + renderTime.toFixed(1) +
+                                   ' msec at ' + d.toLocaleTimeString();
     }
-    str += 'Average frame render time: ' + renderTime.toFixed(1) + ' msec' +
-            lastAverageRenderTimeTime + '<br>';
+    str += 'Average frame render ' + renderTime.toFixed(1) + ' msec' +
+            maxAverageRenderTimeTime + '<br>';
 
     str += renderStats.update(a_data.renderSkippedFrames, a_data.renderTotalFrames);
     str += outputStats.update(a_data.outputSkippedFrames, a_data.outputTotalFrames);

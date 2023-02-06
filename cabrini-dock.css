@@ -213,12 +213,10 @@ body {
 .SlideButton {
     background: #585758;
     border-color: #E0E0E0;
-    width: 23%;
+    width: 24%;
     height: 30px;
-    border-radius: 10px;
-    margin-top: 2px;
-    margin-left: 2px;
-    margin-right:0;
+    border-radius: 5px;
+    margin-bottom: 2px;
     color: white;
 }
 

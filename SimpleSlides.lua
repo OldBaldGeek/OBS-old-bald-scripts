@@ -31,7 +31,7 @@ Microsoft PowerToys to rescale all the images to 1280x720, eliminating the drop.
 
 obs = obslua
 
-local version = "1.1"
+local version = "1.2"
 
 -- Set true to get debug printing
 local debug_print_enabled = false
@@ -47,11 +47,6 @@ local allowed_filetypes = {
     ["bmp"] = true,
     ["gif"] = true,
 }
-
--- The name of a GDI Text source uses to tell a Websockets client the
--- names of the current and next slides.
-local web_socket_interface_source_name = "SimpleSlides_info"
-local web_socket_interface_source      = nil
 
 -- A table of slide show data, indexed by Source name.
 -- Each entry contains a sorted list of filenames, and the index of the current slide.
@@ -243,11 +238,7 @@ function script_load(settings)
 end
 
 function script_unload()
-    if web_socket_interface_source then
-       print("script_unload releasing web_socket_interface_source")
-       obs.obs_source_release(web_socket_interface_source)
-       web_socket_interface_source = nil
-    end
+    debug_print("SimpleSlides script_unload")
 end
 
 -- on_save(loading) is called at startup and when a scene collection is loaded.
@@ -483,52 +474,17 @@ function do_slide(label, action)
                 
                 if new_filename and (new_filename ~= current_filename) then
                     local settings = obs.obs_data_create()
+
+                    -- Changing "file" causes the displayed image to update.
+                    -- It may also be monitored by a Websocket client.
+                    -- We stuff the next slide into "next_file" so the
+                    -- Websocket can see that as well
                     obs.obs_data_set_string(settings, "file", new_filename)
+                    obs.obs_data_set_string(settings, "next_file", next_filename)
                     obs.obs_source_update(source, settings)
                     obs.obs_data_release(settings)
 
                     print( "File[" .. current_slide .. "] for " .. active_source_name .. ' is ' .. new_filename)
-
-                    -- Use a Text source to tell a Websocket client the name
-                    -- of the current and next image file.
-                    local socket_source = obs.obs_get_source_by_name(web_socket_interface_source_name)
-                    if socket_source == nil then
-                        -- Make a new source
-                        local JSON_DATA = [[
-                        {
-                        "bk_opacity":77,
-                        "font":{"face":"Arial",
-                          "flags":0,
-                          "size":40,
-                          "style":"Regular"},
-                        "text":"xxx"
-                        }
-                        ]]
-
-                        local socket_settings = obs.obs_data_create_from_json(JSON_DATA)
-                        obs.obs_data_set_string(socket_settings, "text", new_filename)
-                        obs.obs_data_set_string(socket_settings, "next", next_filename)
-                        socket_source = obs.obs_source_create( 'text_gdiplus', web_socket_interface_source_name, socket_settings, nil)
-                        if socket_source then
-                            print( "Made websocket interface source " .. web_socket_interface_source_name)
-                            -- Remember the source so we can release it at shutdown
-                            web_socket_interface_source = socket_source
-                        else
-                            print( "FAILED to make websocket interface source " .. web_socket_interface_source_name)
-                        end
-                        obs.obs_data_release(socket_settings)
-                        -- DO NOT release the source, or it will be deleted.
-                        -- Released at shutdown
-                    else
-                        local socket_settings = obs.obs_data_create()
-                        obs.obs_data_set_string(socket_settings, "text", new_filename)
-                        obs.obs_data_set_string(socket_settings, "next", next_filename)
-                        obs.obs_source_update(socket_source, socket_settings)
-                        print( "Updated websocket interface source " .. web_socket_interface_source_name)
-
-                        obs.obs_data_release(socket_settings)
-                        obs.obs_source_release(socket_source)
-                    end
                 end
 
                 obs.obs_source_release(source)
