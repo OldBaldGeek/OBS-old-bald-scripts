@@ -1,7 +1,7 @@
 -- AutoStream.lua - simple automated streaming
 
 local obs = obslua
-local version = '1.4'
+local version = '1.5'
 
 -- These names must match the source names used on the control scene
 local explainer_source  = 'Automatic Streamer - explainer'
@@ -171,6 +171,11 @@ end
 -- Called at script load
 function script_load(settings)
     print("script_load")
+
+    -- Connect callback to handle OBS_FRONTEND_EVENT_FINISHED_LOADING
+    -- and kick off the script
+    obs.obs_frontend_add_event_callback(handle_frontend_event)
+    callback_active = true
 end
 
 -- Called at script unload
@@ -385,6 +390,7 @@ function start_playing(a_reason)
             -- probably by forcing a Lua error to show the script log,
             -- since we probably don't have a visible control scene.
             -- Showing in the script UI would also be good.
+            this_is_not_a_function()
         else
             local index = 1
             for line in infile:lines() do
