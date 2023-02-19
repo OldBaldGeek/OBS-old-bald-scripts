@@ -1,7 +1,7 @@
 -- AutoStream.lua - simple automated streaming
 
 local obs = obslua
-local version = '1.5'
+local version = '1.6'
 
 -- These names must match the source names used on the control scene
 local explainer_source  = 'Automatic Streamer - explainer'
@@ -658,6 +658,9 @@ local monther = {January=1,  Jan=1, February=2, Feb=2,
                  September=9,Sep=9, October=10, Oct=10,
                  November=11,Nov=11,December=12,Dec=12}
 
+local legal_days = {ANY=true, MONDAY=true, TUESDAY=true, WEDNESDAY=true,
+                    THURSDAY=true, FRIDAY=true, SATURDAY=true, SUNDAY=true}
+
 -- Verify or wait for the specified date
 cmd_table['date'] =
     function(tail)
@@ -688,7 +691,30 @@ cmd_table['date'] =
                 return goto_label(tail)
             end
         else
-            return set_error('invalid date "' .. (tail or '') .. '"')
+            -- Not a date. Is it a day of the week, or 'ANY'?
+            local ix, iy, want_day = tail:find('(%a+)')
+            if want_day and legal_days[string.upper(want_day)] then
+                local now_day = string.upper(os.date('%A'))
+                want_day = string.upper(want_day)
+                if (want_day == 'ANY') or (now_day == want_day) then
+                    -- On the date: continue
+                    show_text('Today is ' .. now_day)
+                    return IMMEDIATE_NEXT
+                else
+                    local label = tail:match('.+%s+else%s+([%w_]+)')
+                    if label then
+                        -- not today: take the else
+                        show_text('Today is not ' .. want_day)
+                        return goto_label(tail)
+                    else
+                        -- not today: wait for it
+                        show_text('  Waiting until ' .. want_day, true)
+                        return DELAYED_SAME
+                    end
+                end
+            else
+                return set_error('invalid date or day "' .. (tail or '') .. '"')
+            end
         end
     end
 
