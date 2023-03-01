@@ -3,6 +3,7 @@
 // - slide show clickable buttons (alternative to hotkeys used by script)
 // - preview of current and next slide
 // - some basic statistics
+var g_version = "1.1";
 
 // OBS Websockets documentation
 //    https://github.com/obsproject/obs-websocket/blob/master/docs/generated/protocol.md
@@ -33,6 +34,9 @@ var g_slidePollRate = 500
 // Not a multiple of g_slidePollRate, to minimize them happening at the the same time
 // on the theory that this might strain frame time
 var g_statsPollRate = 4003
+
+// Accumulate log text, to be written to source object for analysis.
+var logData = "";
 
 //==============================================================================
 // String shown above the preset lists when no action is in progress
@@ -373,11 +377,23 @@ function handleEvent(a_data)
     // These usually come in pairs: STARTING, STARTED; STOPPING, STOPPED
     case 'RecordStateChanged':
         console.log('Record State changed:', a_data.eventData.outputActive, a_data.eventData.outputState);
+        if (a_data.eventData.outputState == "OBS_WEBSOCKET_OUTPUT_STARTING") {
+            logData += "Recording starting<br>";
+        } else if (a_data.eventData.outputState == "OBS_WEBSOCKET_OUTPUT_STOPPED") {
+            logData += "Recording stopped<br>";
+            saveLog();
+        }
         break;
 
     // These usually come in pairs: STARTING, STARTED; STOPPING, STOPPED
     case 'StreamStateChanged':
         console.log('Stream State changed:', a_data.eventData.outputActive, a_data.eventData.outputState);
+        if (a_data.eventData.outputState == "OBS_WEBSOCKET_OUTPUT_STARTING") {
+            logData += "Streaming starting<br>";
+        } else if (a_data.eventData.outputState == "OBS_WEBSOCKET_OUTPUT_STOPPED") {
+            logData += "Streaming stopped<br>";
+            saveLog();
+        }
         break;
 
     default:
@@ -416,6 +432,10 @@ function handleResponse(a_data)
 
         case "get-stats":
             processStats(a_data.responseData);
+            break;
+
+        case "save-log-data":
+            console.log('Saved log data.');
             break;
 
         default:
@@ -648,11 +668,18 @@ class FrameStats
 
         this.lastSkip = a_skipped;
         this.lastTotal = a_total;
-        return this.name +
+        var str = this.name +
                (a_skipped - this.lastSkip_base) +
                ' of ' +
                (a_total - this.lastTotal_base) +
                this.lastSkipTime + '<br>';
+
+        if (delta != 0) {
+            // Save for persistent log
+            logData += str;
+        }
+
+        return str;
     }
 }
 
@@ -703,7 +730,8 @@ function reset_stats()
 function processStats(a_data)
 {
     var cpuUsage = parseFloat(a_data.cpuUsage);
-    if (cpuUsage > maxCPU_usage) {
+    var logIt = (cpuUsage > maxCPU_usage);
+    if (logIt) {
         maxCPU_usage = cpuUsage
         var d = new Date;
 
@@ -712,20 +740,52 @@ function processStats(a_data)
     }
     var str = 'CPU usage ' + cpuUsage.toFixed(1) + '&percnt;' +
               maxCPU_usageTime + '<br>';
+    var statText = str;
+    if (logIt) {
+        // Save for persistent log
+        logData += str;
+    }
 
     var renderTime = parseFloat(a_data.averageFrameRenderTime);
-    if (renderTime > maxAverageRenderTime) {
+    logIt = (renderTime > maxAverageRenderTime);
+    if (logIt) {
         maxAverageRenderTime = renderTime;
 
         var d = new Date;
         maxAverageRenderTimeTime = '.&nbsp;&nbsp;&nbsp;Maximum ' + renderTime.toFixed(1) +
                                    ' msec at ' + d.toLocaleTimeString();
     }
-    str += 'Average frame render ' + renderTime.toFixed(1) + ' msec' +
-            maxAverageRenderTimeTime + '<br>';
+    str = 'Average frame render ' + renderTime.toFixed(1) + ' msec' +
+           maxAverageRenderTimeTime + '<br>';
+    statText += str;
+    if (logIt) {
+        // Save for persistent log
+        logData += str;
+    }
 
-    str += renderStats.update(a_data.renderSkippedFrames, a_data.renderTotalFrames);
-    str += outputStats.update(a_data.outputSkippedFrames, a_data.outputTotalFrames);
+    statText += renderStats.update(a_data.renderSkippedFrames, a_data.renderTotalFrames);
+    statText += outputStats.update(a_data.outputSkippedFrames, a_data.outputTotalFrames);
 
-    document.getElementById('stats').innerHTML = str;
+    document.getElementById('stats').innerHTML = statText;
+}
+
+// Save our log to our interface object.
+// When OBS saves the scene collection to json, we can harvest the data
+function saveLog()
+{
+    console.log('Saving log data' + logData);
+    sendPayload( 6, { "requestType": "SetInputSettings",
+                      "requestId": "save-log-data",
+                      "requestData": {
+                         "inputName": g_slide_info_source,
+                         "inputSettings" : {
+                             "saved_log" : logData 
+                         } }
+                    } );
+}
+
+// Form UI: dump stat log
+function dump_stats()
+{
+    document.getElementById('log_data').innerHTML = logData;
 }
