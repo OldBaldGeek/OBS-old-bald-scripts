@@ -3,7 +3,7 @@
 // - slide show clickable buttons (alternative to hotkeys used by script)
 // - preview of current and next slide
 // - some basic statistics
-var g_version = "1.1";
+var g_version = "1.2";
 
 // OBS Websockets documentation
 //    https://github.com/obsproject/obs-websocket/blob/master/docs/generated/protocol.md
@@ -378,9 +378,9 @@ function handleEvent(a_data)
     case 'RecordStateChanged':
         console.log('Record State changed:', a_data.eventData.outputActive, a_data.eventData.outputState);
         if (a_data.eventData.outputState == "OBS_WEBSOCKET_OUTPUT_STARTING") {
-            logData += "Recording starting<br>";
+            logData += "Recording starting " + Date().toLocaleString() + "<br>";
         } else if (a_data.eventData.outputState == "OBS_WEBSOCKET_OUTPUT_STOPPED") {
-            logData += "Recording stopped<br>";
+            logData += "Recording stopped " + Date().toLocaleString() + "<br>";
             saveLog();
         }
         break;
@@ -389,9 +389,9 @@ function handleEvent(a_data)
     case 'StreamStateChanged':
         console.log('Stream State changed:', a_data.eventData.outputActive, a_data.eventData.outputState);
         if (a_data.eventData.outputState == "OBS_WEBSOCKET_OUTPUT_STARTING") {
-            logData += "Streaming starting<br>";
+            logData += "Streaming starting " + Date().toLocaleString() + "<br>";
         } else if (a_data.eventData.outputState == "OBS_WEBSOCKET_OUTPUT_STOPPED") {
-            logData += "Streaming stopped<br>";
+            logData += "Streaming stopped " + Date().toLocaleString() + "<br>";
             saveLog();
         }
         break;
