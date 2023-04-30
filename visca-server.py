@@ -7,6 +7,11 @@
 # TODO: Python server prints a line for every request. Can we stop it?
 #   127.0.0.1 - - [22/Apr/2023 12:06:18] "POST /server HTTP/1.1" 200 -
 #   127.0.0.1 - - [22/Apr/2023 12:07:19] "GET /foo/ HTTP/1.1" 200 -
+#
+# We define "right", "up, etc. to be as seen by the camera. Thus:
+# - "left" is increasing Camera pan
+# - "up" is increasing Camera tilt
+# - "in" is increasing Camera zoom
 
 import sys
 import time
@@ -15,11 +20,12 @@ import urllib.parse
 import serial
 import json
 
-g_version = "1.0"
+g_version = "1.1"
 
-
-# Default configuration values overrideable by commandline parameters
-g_hostName   = "localhost"
+# Default configuration values overrideable by commandline parameters.
+# Originally had hostname = "localhost" here and in the Javascript client.
+# But Chrome sent some requests as IPv6, causing slowdown.
+g_hostName   = "127.0.0.1"
 g_serverPort = 8080
 g_serialPort     = "COM1"
 g_serialBaudRate = 9600
@@ -77,7 +83,7 @@ class ViscaTalker:
         # Discard any stale input
         self.serial_port.reset_input_buffer()
 
-        a_bytes[0] = a_address + 0x80
+        a_bytes[0] = int(a_address) + 0x80
         print('Sending', len(a_bytes), 'bytes:', a_bytes.hex())
         self.serial_port.write(a_bytes)
 
@@ -93,7 +99,7 @@ class ViscaTalker:
             # 0  1  2  3  4  5
             # 90 41 FF 90 51 FF
             s = self.serial_port.read(6)
-            print('Received Ack/Comp', len(s), 'bytes:', s.hex())
+            #print('Received Ack/Comp', len(s), 'bytes:', s.hex())
             if s != self.visca_ack_complete:
                 raise ErrorEx('Missing or incorrect serial response')
 
@@ -184,10 +190,10 @@ class ViscaTalker:
     def set_zoom(self, a_address, a_zoom):
         try:
             val = self.parm_as_int(a_zoom)
-            self.visca_set_zoom[6] = (val >> 12) & 0x0F
-            self.visca_set_zoom[7] = (val >> 8)  & 0x0F
-            self.visca_set_zoom[8] = (val >> 4)  & 0x0F
-            self.visca_set_zoom[9] = (val)       & 0x0F
+            self.visca_set_zoom[4] = (val >> 12) & 0x0F
+            self.visca_set_zoom[5] = (val >> 8)  & 0x0F
+            self.visca_set_zoom[6] = (val >> 4)  & 0x0F
+            self.visca_set_zoom[7] = (val)       & 0x0F
             self.send_visca(a_address, self.visca_set_zoom, 0)
         except ErrorEx as ex:
             ex.add('set_zoom failed')
@@ -235,10 +241,10 @@ class ViscaTalker:
             elif a_direction == 'out':
                 self.visca_zoom[4] = 0x30 + (int(a_speed) & 0x0F)
             elif a_direction == 'stop':
-                self.visca_slew[4] = 0x00
+                self.visca_zoom[4] = 0x00
             else:
                 raise ErrorEx('Invalid zoom direction')
-        
+
             self.send_visca(a_address, self.visca_zoom, 0)
         except ErrorEx as ex:
             ex.add('do_zoom failed')
@@ -448,6 +454,7 @@ class MyServer(BaseHTTPRequestHandler):
             if value is None:
                 raise ErrorEx('missing preset value')
             g_viscaTalker.goto_preset( camera, value )
+            response['status'] = "ok"
 
         except ErrorEx as ex:
             response['errors'] = ex.get_errors()
@@ -467,6 +474,7 @@ class MyServer(BaseHTTPRequestHandler):
             if value is None:
                 raise ErrorEx('missing preset value')
             g_viscaTalker.set_preset( camera, value )
+            response['status'] = "ok"
 
         except ErrorEx as ex:
             response['errors'] = ex.get_errors()
@@ -497,7 +505,7 @@ class MyServer(BaseHTTPRequestHandler):
         return response
 
     #===========================================================================
-    # Get the current pan and tilt
+    # Get camera information
     def do_cmd_version_info(self, a_post_body):
         response = {}
         response['status'] = 'fail'
@@ -516,26 +524,60 @@ class MyServer(BaseHTTPRequestHandler):
 
         return response
 
+    #===========================================================================
+    # Report basic servier information
+    def do_cmd_about(self, a_post_body):
+        global g_version
+        global g_serialPort
+        global g_serialBaudRate
+
+        response = {}
+        response['status']    = 'ok'
+        response['version']   = g_version
+        response['port']      = g_serialPort
+        response['baud_rate'] = g_serialBaudRate
+        return response
+
+    #==============================================================================
+    # Add headers to deal with CORS
+    def end_headers(self):
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'OPTIONS, GET, POST')
+        self.send_header('Access-Control-Allow-Headers', '*')
+        self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate')
+        return super(MyServer, self).end_headers()
+
+    #==============================================================================
+    # Accept OPTIONS to deal with CORS
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Allow', 'OPTIONS, GET, POST')
+        self.end_headers()
+
     #==============================================================================
     def do_GET(self):
         global g_version
+        global g_serialPort
+        global g_serialBaudRate
 
         # For now, ignore the path and just send a generic page
-        # TODO: maybe add serial port, baud rate, number of good and failed requests
+        # TODO: maybe add number of good and failed requests
         # Show persistent errors like no serial port.
         self.send_response(200)
         self.send_header("Content-type", "text/html")
         self.end_headers()
-        str = "<html><head><title>Visca Server</title></head><body>" +
-              "<p>This is the Cabrini Visca server.</p>" +
-              "<p>Version: " + g_version + "</p>" +
-              "</body></html>"
-        self.wfile.write(bytes(str, "utf-8"))
+        val = "<html><head><title>Visca Server</title></head><body>" +\
+              "<p>This is the Cabrini Visca server.</p>" +\
+              "<p>Version: " + g_version + "</p>" +\
+              "<p>Serial interface: " + g_serialPort +\
+              " at " + str(g_serialBaudRate) + " baud.</p>" +\
+              "</body></html>";
+        self.wfile.write(bytes(val, "utf-8"))
 
     #==============================================================================
     def do_POST(self):
         url = urllib.parse.urlparse(self.path)
-        print("POST to path", url.path)
+        #print("POST to path", url.path)
         if url.path != '/server':
             self.send_html(404, 'not found')
             return
@@ -543,19 +585,19 @@ class MyServer(BaseHTTPRequestHandler):
         # Get the body of the request
         # TODO: if no Content-length, read all?
         content_len = int(self.headers.get('Content-Length'))
-        print('POST with ' + str(content_len) + ' bytes')
+        #print('Received POST with ' + str(content_len) + ' bytes')
         post_body = json.loads(self.rfile.read(content_len))
-        print(json.dumps(post_body, indent=4))
+        #print(json.dumps(post_body, indent=4))
         
         command = post_body.get('command', '?')
-        if command == 'moveto':
-            response = self.do_cmd_moveto(post_body)
-        elif command == 'pan':
+        if command == 'pan':
             response = self.do_cmd_pan(post_body)
         elif command == 'tilt':
             response = self.do_cmd_tilt(post_body)
         elif command == 'zoom':
             response = self.do_cmd_zoom(post_body)
+        elif command == 'moveto':
+            response = self.do_cmd_moveto(post_body)
 
         elif command == 'go-preset':
             response = self.do_cmd_go_preset(post_body)
@@ -564,13 +606,19 @@ class MyServer(BaseHTTPRequestHandler):
 
         elif command == 'report':
             response = self.do_cmd_report(post_body)
-        elif command == 'version_info':
+        elif command == 'version-info':
             response = self.do_cmd_version_info(post_body)
+        elif command == 'about':
+            response = self.do_cmd_about(post_body)
 
         else:
             response = {"status":'unknown command'}
 
         response_string = json.dumps(response, indent=4)
+
+        #print('Send response')
+        #print(response_string)
+
         self.send_response(200)
         self.send_header("Content-type", "application/json")
         self.send_header("Content-Length", str(len(response_string)))
