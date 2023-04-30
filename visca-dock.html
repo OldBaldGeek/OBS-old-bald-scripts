@@ -5,6 +5,10 @@
 
     <script>
 
+    jog_repeat = 250;   // Jog repeats if mouse held down this long
+    actionState = 'IDLE';
+    jogTimer = null;
+
     // Send a VISCA request, returning a promise.
     // - Call resolve() on successful transaction
     // - Call reject() on error
@@ -64,144 +68,10 @@
               });
     }
 
-    //=========================================================================
-    slew_threshold = 160;   // Longer than this is a slew command
-    actionState = 'IDLE';
-    slewTimer = null;
-    request = {};
-
-    function on_mouseenter( a_control ) {
-        // Just change color and maybe mouse cursor to indicate clickable
-        a_control.setAttribute("color", "green");
-    }
-
-    function on_mouseleave( a_control ) {
-        if (actionState != 'IDLE') {
-            // Clean up if mouse moved off button while pressed
-            on_mouseup(a_control);
-        }
-        else {
-            a_control.setAttribute("color", "white");
-        }
-    }
-
     function on_mousedown( a_control ) {
-        switch (a_control.id) {
-        case 'go_up':
-            request['command'] = 'tilt';
-            request['value'] = 'up';
-            break;
-
-        case 'go_down':
-            request['command']= 'tilt';
-            request['value'] = 'down';
-            break;
-
-        case 'go_left':
-            request['command'] = 'pan';
-            request['value'] = 'left';
-            break;
-
-        case 'go_right':
-            request['command'] = 'pan';
-            request['value'] = 'right';
-            break;
-
-        case 'zoom_in':
-            request['command'] = 'zoom';
-            request['value'] = 'in';
-            break;
-
-        case 'zoom_out':
-            request['command'] = 'zoom';
-            request['value'] = 'out';
-            break;
-
-        default:
-            var str = "Error: unexpected control ID " + a_control.id;
-            document.getElementById("showResults").innerHTML = str;
-            console.log( str );
-            return;
-        }
-
-        a_control.setAttribute("color", "blue");
-        actionState = 'JOG';
-		console.log('Started jog timer');
-        slewTimer = window.setTimeout(on_threshold_reached, slew_threshold, a_control);
-    }
-
-    function on_mouseup( a_control ) {
-		console.log('Stopping jog timer');
-        window.clearTimeout(slewTimer);
-        slewTimer = null;
-
-        if (actionState == 'JOG') {
-            if ((request['value'] == 'left') ||
-                (request['value'] == 'up') ||
-                (request['value'] == 'in'))
-            {
-                request['value'] = 1;
-            }
-            else {
-                request['value'] = -1;
-            }
-        }
-        else { 
-            // Assume actionState == 'SLEW', and stop it
-            request['value'] = 'stop';
-        }
-
-        send_visca_request(request)
-            .then((response) => {
-                console.log('mouseup success');
-            })
-            .catch((a_error) => {
-                document.getElementById("showResults").innerHTML = 'Failed mouseup: ' + a_error;
-            })
-            .finally(() => {
-                actionState = 'IDLE';
-                // TODO: hover color, UNLESS called by mouseleave...
-                a_control.setAttribute("color", "green");
-            });
-    }
-
-    // Start slewing if button down beyond threshold time
-    function on_threshold_reached(a_control) {
-		console.log('Jog timer');
-        a_control.setAttribute("color", "yellow");
-        actionState = 'SLEW';
-        send_visca_request(request)
-            .then((response) => {
-                console.log('start slew success');
-            })
-            .catch((a_error) => {
-                document.getElementById("showResults").innerHTML = 'Failed start slew: ' + a_error;
-            });
-    }
-
-    //==========================================================================
-    jog_repeat = 250;   // Jog repeats if mouse held down this long
-    actionState2 = 'IDLE';
-    jogTimer = null;
-
-    function on_mouseenter2( a_control ) {
-        a_control.setAttribute("color", "green");
-    }
-
-    function on_mouseleave2( a_control ) {
-        if (actionState2 != 'IDLE') {
-            on_mouseup2(a_control);
-        }
-        else {
-            a_control.setAttribute("color", "white");
-        }
-    }
-
-    function on_mousedown2( a_control ) {
-        var str;
         request = {};
 
-        actionState2 = 'SLEW';
+        actionState = 'SLEW';
         switch (a_control.id) {
         case 'slew_up':
             request['command'] = 'tilt';
@@ -223,45 +93,71 @@
             request['value'] = 'right';
             break;
 
+        case 'slew_in':
+            request['command'] = 'zoom';
+            request['value'] = 'in';
+            break;
+
+        case 'slew_out':
+            request['command'] = 'zoom';
+            request['value'] = 'out';
+            break;
+
         case 'jog_up':
             request['command'] = 'tilt';
             request['value'] = '1';
-            actionState2 = 'JOG';
+            actionState = 'JOG';
             break;
 
         case 'jog_down':
             request['command'] = 'tilt';
             request['value'] = '-1';
-            actionState2 = 'JOG';
+            actionState = 'JOG';
             break;
 
         case 'jog_left':
             request['command'] = 'pan';
             request['value'] = '1';
-            actionState2 = 'JOG';
+            actionState = 'JOG';
             break;
 
         case 'jog_right':
             request['command'] = 'pan';
             request['value'] = '-1';
-            actionState2 = 'JOG';
+            actionState = 'JOG';
+            break;
+
+        case 'jog_in':
+            request['command'] = 'zoom';
+            request['value'] = '1';
+            actionState = 'JOG';
+            break;
+
+        case 'jog_out':
+            request['command'] = 'zoom';
+            request['value'] = '-1';
+            actionState = 'JOG';
             break;
 
         default:
-            str = "Error: unexpected control ID " + a_control.id;
+            var str = "Error: unexpected control ID " + a_control.id;
             document.getElementById("showResults").innerHTML = str;
             console.log( str );
             return;
         }
 
-        a_control.setAttribute("color", "blue");
-        if (actionState2 == 'JOG') {
+        // a_control.setAttribute("color", "blue");
+        if (actionState == 'JOG') {
             // Jog: send command, start timer to repeat jog
             send_visca_request(request)
                 .then((response) => {
-                    console.log('mousedown success, starting jog timer');
-                    // Start the timer to repeat jog
-                    jogTimer = window.setTimeout(on_timer2, jog_repeat, request)
+                    if (actionState == 'JOG') {
+                        // If button still active, start a timer to repeat jog.
+                        // Normally the case, but a delay in the server may allow
+                        // button-up before we get here.
+                        console.log('jog success, start jog timer');
+                        jogTimer = window.setTimeout(on_timer2, jog_repeat, request);
+                    }
                 })
                 .catch((a_error) => {
                     document.getElementById("showResults").innerHTML = 'Failed mousedown: ' + a_error;
@@ -279,45 +175,46 @@
         }
     }
 
-    function on_mouseup2( a_control ) {
-        // Stop repeated jogs
-        console.log('mouseup, stopping jog timer');
-        window.clearTimeout(jogTimer);
-        jogTimer = null;
-        if (actionState2 == 'JOG') {
-            actionState2 = 'IDLE';
-            // TODO: hover color, UNLESS called by mouseleave...
-            a_control.setAttribute("color", "green");
+    function on_mouseup( a_control ) {
+        if (actionState == 'JOG') {
+            actionState = 'IDLE';
+            console.log('mouseup stopping jog timer');
+            window.clearTimeout(jogTimer);
+            jogTimer = null;
         }
-        else if (actionState2 == 'SLEW') {
+        else if (actionState == 'SLEW') {
             // Stop slew
             request['value'] = 'stop';
             send_visca_request(request)
                 .then((response) => {
-                    console.log('mouseup2 success');
+                    console.log('mouseup stopped slew');
                 })
                 .catch((a_error) => {
-                    document.getElementById("showResults").innerHTML = 'Failed mouseup2: ' + a_error;
+                    document.getElementById("showResults").innerHTML = 'Failed mouseup: ' + a_error;
                 })
                 .finally(() => {
-                    actionState2 = 'IDLE';
-                    // TODO: hover color, UNLESS called by mouseleave...
-                    a_control.setAttribute("color", "green");
+                    actionState = 'IDLE';
                 });
         }
     }
 
-    function on_timer2(a_request) {
-        // Repeat jog command
-        console.log('jog timer');
-        if (actionState2 == 'JOG') {
+    function on_mouseleave( a_control ) {
+        if (actionState != 'IDLE') {
+            // Terminate any commands in progress
+            on_mouseup(a_control);
+        }
+    }
+
+    function on_timer(a_request) {
+        if (actionState == 'JOG') {
+            console.log('timer: repeat jog');
 			send_visca_request(request)
 				.then((response) => {
 					console.log('jog timer success. Restaring timer');
-					jogTimer = window.setTimeout(on_timer2, jog_repeat, a_request)
+					jogTimer = window.setTimeout(on_timer, jog_repeat, a_request)
 				})
 				.catch((a_error) => {
-					document.getElementById("showResults").innerHTML = 'Failed mouse timer2: ' + a_error;
+					document.getElementById("showResults").innerHTML = 'Failed mouse timer: ' + a_error;
 				});
 		}
     }
@@ -367,6 +264,18 @@
     </script>
 </head>
 
+<style>
+    .arrow {
+        color: white;
+    }
+    .arrow:hover {
+        color: blue;
+    }
+    .arrow:active {
+        color: green;
+    }
+</style>
+
 <body>
 
 <div style="position:relative; top:0px; left:0px;">
@@ -393,88 +302,34 @@
     </div>
 </div>
 
-<!-- ============== first row =========================================================== -->
-<div style="position:relative; top:100px; left:100px; width:250px; height:102px; background:#808080;">
-<div style="position:absolute; top:17px; left:34px; width:34px; height:17px;">
-    <svg id="go_up" width="34" height="17" color="white"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
-        onmouseenter="on_mouseenter(this);" onmouseleave="on_mouseleave(this);">
-        <path d="M 0 17  L 17 0  L 34 17  Z" fill="currentColor"/>
-    </svg>
-</div>
-<div style="position:absolute; top:41px; left:34px; width:34px; height:17px; font-size:13px; text-align: center;">
-    move
-</div>
-<div style="position:absolute; top:34px; left:17px; width:17px; height:34px;">
-    <svg id="go_left" width="17" height="34" color="white"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
-        onmouseenter="on_mouseenter(this);" onmouseleave="on_mouseleave(this);">
-        <path d="M 17 34  L 0 17  L 17 0  Z" fill="currentColor"/>
-    </svg>
-</div>
-<div style="position:absolute; top:34px; left:68px; width:17px; height:34px;">
-    <svg id="go_right" width="17" height="34" color="white"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
-        onmouseenter="on_mouseenter(this);" onmouseleave="on_mouseleave(this);">
-        <path d="M 0 0  L 17 17  L 0 34  Z" fill="currentColor"/>
-    </svg>
-</div>
-<div style="position:absolute; top:68px; left:34px; width:34px; height:17px;">
-    <svg id="go_down" width="34" height="17" color="white"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
-        onmouseenter="on_mouseenter(this);" onmouseleave="on_mouseleave(this);">
-        <path d="M 0 0  L 17 17  L 34 0  Z" fill="currentColor"/>
-    </svg>
-</div>
-
-<div style="position:absolute; top:17px; left:134px; width:34px; height:17px;">
-    <svg id="zoom_in" width="34" height="17" color="white"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
-        onmouseenter="on_mouseenter(this);" onmouseleave="on_mouseleave(this);">
-        <path d="M 0 17  L 17 0  L 34 17  Z" fill="currentColor"/>
-    </svg>
-</div>
-<div style="position:absolute; top:41px; left:134px; width:34px; height:17px; font-size:13px; text-align: center;">
-    zoom
-</div>
-<div style="position:absolute; top:68px; left:134px; width:34px; height:17px;">
-    <svg id="zoom_out" width="34" height="17" color="white"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
-        onmouseenter="on_mouseenter(this);" onmouseleave="on_mouseleave(this);">
-        <path d="M 0 0  L 17 17  L 34 0  Z" fill="currentColor"/>
-    </svg>
-</div>
-
-</div>
-
-<!-- ============== second row =========================================================== -->
+<!----------------- Pan/Tilt buttons ----------------------->
 <div style="position:relative; top:160px; left:100px; width:250px; height:102px; background:#808080;">
 <div style="position:absolute; top:0px; left:34px; width:34px; height:17px;">
-    <svg id="slew_up" width="34" height="17" color="white"
-        onmousedown="on_mousedown2(this);" onmouseup="on_mouseup2(this);"
-        onmouseenter="on_mouseenter2(this);" onmouseleave="on_mouseleave2(this);">
+    <svg id="slew_up" class="arrow" width="34" height="17"
+        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
+        onmouseleave="on_mouseleave(this);">
         <path d="M 0 17  L 17 0  L 34 17  Z" fill="currentColor"/>
     </svg>
 </div>
 <div style="position:absolute; top:17px; left:34px; width:34px; height:17px;">
-    <svg id="jog_up" width="34" height="17" color="white"
-        onmousedown="on_mousedown2(this);" onmouseup="on_mouseup2(this);"
-        onmouseenter="on_mouseenter2(this);" onmouseleave="on_mouseleave2(this);">
+    <svg id="jog_up" class="arrow" width="34" height="17"
+        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
+        onmouseleave="on_mouseleave(this);">
         <path d="M 0 17  L 17 0  L 34 17  Z" fill="currentColor"/>
     </svg>
 </div>
 
 <div style="position:absolute; top:34px; left:0px; width:17px; height:34px;">
-    <svg id="slew_left" width="17" height="34" color="white"
-        onmousedown="on_mousedown2(this);" onmouseup="on_mouseup2(this);"
-        onmouseenter="on_mouseenter2(this);" onmouseleave="on_mouseleave2(this);">
+    <svg id="slew_left" class="arrow" width="17" height="34"
+        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
+        onmouseleave="on_mouseleave(this);">
         <path d="M 17 34  L 0 17  L 17 0  Z" fill="currentColor"/>
     </svg>
 </div>
 <div style="position:absolute; top:34px; left:17px; width:17px; height:34px;">
-    <svg id="jog_left" width="17" height="34" color="white"
-        onmousedown="on_mousedown2(this);" onmouseup="on_mouseup2(this);"
-        onmouseenter="on_mouseenter2(this);" onmouseleave="on_mouseleave2(this);">
+    <svg id="jog_left" class="arrow" width="17" height="34"
+        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
+        onmouseleave="on_mouseleave(this);">
         <path d="M 17 34  L 0 17  L 17 0  Z" fill="currentColor"/>
     </svg>
 </div>
@@ -482,46 +337,47 @@
     move
 </div>
 <div style="position:absolute; top:34px; left:68px; width:17px; height:34px;">
-    <svg id="jog_right" width="17" height="34" color="white"
-        onmousedown="on_mousedown2(this);" onmouseup="on_mouseup2(this);"
-        onmouseenter="on_mouseenter2(this);" onmouseleave="on_mouseleave2(this);">
+    <svg id="jog_right" class="arrow" width="17" height="34"
+        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
+        onmouseleave="on_mouseleave(this);">
         <path d="M 0 0  L 17 17  L 0 34  Z" fill="currentColor"/>
     </svg>
 </div>
 <div style="position:absolute; top:34px; left:85px; width:17px; height:34px;">
-    <svg id="slew_right" width="17" height="34" color="white"
-        onmousedown="on_mousedown2(this);" onmouseup="on_mouseup2(this);"
-        onmouseenter="on_mouseenter2(this);" onmouseleave="on_mouseleave2(this);">
+    <svg id="slew_right" class="arrow" width="17" height="34"
+        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
+        onmouseleave="on_mouseleave(this);">
         <path d="M 0 0  L 17 17  L 0 34  Z" fill="currentColor"/>
     </svg>
 </div>
 
 <div style="position:absolute; top:68px; left:34px; width:34px; height:17px;">
-    <svg id="jog_down" width="34" height="17" color="white"
-        onmousedown="on_mousedown2(this);" onmouseup="on_mouseup2(this);"
-        onmouseenter="on_mouseenter2(this);" onmouseleave="on_mouseleave2(this);">
+    <svg id="jog_down" class="arrow" width="34" height="17"
+        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
+        onmouseleave="on_mouseleave(this);">
         <path d="M 0 0  L 17 17  L 34 0  Z" fill="currentColor"/>
     </svg>
 </div>
 <div style="position:absolute; top:85px; left:34px; width:34px; height:17px;">
-    <svg id="slew_down" width="34" height="17" color="white"
-        onmousedown="on_mousedown2(this);" onmouseup="on_mouseup2(this);"
-        onmouseenter="on_mouseenter2(this);" onmouseleave="on_mouseleave2(this);">
+    <svg id="slew_down" class="arrow" width="34" height="17"
+        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
+        onmouseleave="on_mouseleave(this);">
         <path d="M 0 0  L 17 17  L 34 0  Z" fill="currentColor"/>
     </svg>
 </div>
 
+<!----------------- Zoom buttons ----------------------->
 <div style="position:absolute; top:0px; left:134px; width:34px; height:17px;">
-    <svg id="zoom_in" width="34" height="17" color="white"
+    <svg id="slew_in" class="arrow" width="34" height="17"
         onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
-        onmouseenter="on_mouseenter(this);" onmouseleave="on_mouseleave(this);">
+        onmouseleave="on_mouseleave(this);">
         <path d="M 0 17  L 17 0  L 34 17  Z" fill="currentColor"/>
     </svg>
 </div>
 <div style="position:absolute; top:17px; left:134px; width:34px; height:17px;">
-    <svg id="zoom_in" width="34" height="17" color="white"
+    <svg id="jog_in" class="arrow" width="34" height="17"
         onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
-        onmouseenter="on_mouseenter(this);" onmouseleave="on_mouseleave(this);">
+        onmouseleave="on_mouseleave(this);">
         <path d="M 0 17  L 17 0  L 34 17  Z" fill="currentColor"/>
     </svg>
 </div>
@@ -529,16 +385,16 @@
     zoom
 </div>
 <div style="position:absolute; top:68px; left:134px; width:34px; height:17px;">
-    <svg id="zoom_out" width="34" height="17" color="white"
+    <svg id="jog_out" class="arrow" width="34" height="17"
         onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
-        onmouseenter="on_mouseenter(this);" onmouseleave="on_mouseleave(this);">
+        onmouseleave="on_mouseleave(this);">
         <path d="M 0 0  L 17 17  L 34 0  Z" fill="currentColor"/>
     </svg>
 </div>
 <div style="position:absolute; top:85px; left:134px; width:34px; height:17px;">
-    <svg id="zoom_out" width="34" height="17" color="white"
+    <svg id="slew_out" class="arrow" width="34" height="17"
         onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
-        onmouseenter="on_mouseenter(this);" onmouseleave="on_mouseleave(this);">
+        onmouseleave="on_mouseleave(this);">
         <path d="M 0 0  L 17 17  L 34 0  Z" fill="currentColor"/>
     </svg>
 </div>
