@@ -5,9 +5,24 @@
 
     <script>
 
-    jog_repeat = 250;   // Jog repeats if mouse held down this long
-    actionState = 'IDLE';
-    jogTimer = null;
+    // Originally had hostname = "localhost" here and in the Visca server.
+    // But in Chrome (not Firefox) we see consistent attempts to
+    // open TCP sessions in IPv6, getting RST,ACK (from server or Windows?)
+    // Chrome waits about 250 msec and does another IPv6 SYN on a new port
+    // After getting another RST,ACK, Chrome waits about 50 msec, then
+    // finally starts the session on IPv4.
+    // Using 127.0.0.1 eliminates the RST,ACKs and delays.
+    var url = "http://127.0.0.1:8080/server";
+
+    var request = {};
+    var actionState = 'IDLE';
+    var jog_repeat = 250;       // Jog repeats every jog_repeat msec if mouse held down
+    var jogTimer = null;
+
+    // Used by Save and Load presets
+    var wait_for_preset = 2000; // msec to wait for camera movement
+    var presetTimer = null;
+    var presets = [];
 
     // Send a VISCA request, returning a promise.
     // - Call resolve() on successful transaction
@@ -22,15 +37,6 @@
         return new Promise(
             function(resolve, reject) {
                 var req = new XMLHttpRequest();
-
-                // Originally had hostname = "localhost" here and in the Visca server.
-                // But in Chrome (not Firefox) we see consistent attempts to
-                // open TCP sessions in IPv6, getting RST,ACK (from server or Windows?)
-                // Chrome waits about 250 msec and does another IPv6 SYN on a new port
-                // After getting another RST,ACK, Chrome waits about 50 msec, then
-                // finally starts the session on IPv4.
-                // Using 127.0.0.1 eliminates the RST,ACKs and delays.
-                var url = "http://127.0.0.1:8080/server";
                 req.open('POST', url);
                 req.setRequestHeader('Content-Type', 'application/json');
 
@@ -156,7 +162,7 @@
                         // Normally the case, but a delay in the server may allow
                         // button-up before we get here.
                         console.log('jog success, start jog timer');
-                        jogTimer = window.setTimeout(on_timer2, jog_repeat, request);
+                        jogTimer = window.setTimeout(on_timer, jog_repeat, request);
                     }
                 })
                 .catch((a_error) => {
@@ -198,7 +204,7 @@
         }
     }
 
-    function on_mouseleave( a_control ) {
+    function on_mouseleave(a_control) {
         if (actionState != 'IDLE') {
             // Terminate any commands in progress
             on_mouseup(a_control);
@@ -208,7 +214,7 @@
     function on_timer(a_request) {
         if (actionState == 'JOG') {
             console.log('timer: repeat jog');
-			send_visca_request(request)
+			send_visca_request(a_request)
 				.then((response) => {
 					console.log('jog timer success. Restaring timer');
 					jogTimer = window.setTimeout(on_timer, jog_repeat, a_request)
@@ -220,6 +226,7 @@
     }
 
     function do_read_position() {
+        request = {};
         request['command'] = 'report';
         send_visca_request(request)
             .then((response) => {
@@ -227,9 +234,9 @@
                     '  tilt=' + response['tilt'] + '  zoom=' + response['zoom'];
 
                 // Stuff the values into the input fields
-                document.getElementById("pan_val").innerHTML = response['pan'];
-                document.getElementById("tilt_val").innerHTML = response['tilt'];
-                document.getElementById("zoom_val").innerHTML = response['zoom'];
+                document.getElementById("pan_val").value = response['pan'];
+                document.getElementById("tilt_val").value = response['tilt'];
+                document.getElementById("zoom_val").value = response['zoom'];
             })
             .catch((a_error) => {
                 document.getElementById("showResults").innerHTML = 'Failed read position: ' + a_error;
@@ -237,6 +244,7 @@
     }
 
     function do_read_version_info() {
+        request = {};
         request['command'] = 'version-info';
         send_visca_request(request)
             .then((response) => {
@@ -250,6 +258,7 @@
     }
 
     function do_show_preset() {
+        request = {};
         request['command'] = 'go-preset';
         request['value'] = document.getElementById("preset_number").value;
         send_visca_request(request)
@@ -261,6 +270,190 @@
             });
     }
 
+    function do_set_preset() {
+        request = {};
+        request['command'] = 'set-preset';
+        request['value'] = document.getElementById("preset_number").value;
+        send_visca_request(request)
+            .then((response) => {
+                console.log('Set preset ' + request['value']);
+            })
+            .catch((a_error) => {
+                document.getElementById("showResults").innerHTML = 'Failed set preset: ' + a_error;
+            });
+    }
+
+    function do_move() {
+        request = {};
+        request['command'] = 'moveto';
+        request['pan'] = document.getElementById("pan_val").value;
+        request['tilt'] = document.getElementById("tilt_val").value;
+        request['zoom'] = document.getElementById("zoom_val").value;
+
+        send_visca_request(request)
+            .then((response) => {
+                console.log('Moved ');
+            })
+            .catch((a_error) => {
+                document.getElementById("showResults").innerHTML = 'Failed move: ' + a_error;
+            });
+    }
+
+    function do_send_raw() {
+        request = {};
+        request['command'] = 'send_raw';
+        request['bytes-to-send'] = document.getElementById("bytes_to_send").value;
+        request['reply-length'] = document.getElementById("reply_length").value;
+
+        send_visca_request(request)
+            .then((response) => {
+                console.log('Sent bytes');
+                document.getElementById("showResults").innerHTML = response['response-bytes'];
+            })
+            .catch((a_error) => {
+                document.getElementById("showResults").innerHTML = 'Failed move: ' + a_error;
+            });
+    }
+
+    // Fetch all presets and save to a file
+    function do_save_presets() {
+        // Disable controls while we run
+        document.getElementById("hideable_fields").style.visibility = "hidden";
+        presets = [];
+        do_get_next_preset(0)
+    }
+
+    function do_get_next_preset(a_preset_number) {
+        request = {};
+        request['command'] = 'go-preset';
+        request['value'] = a_preset_number;
+        send_visca_request(request)
+            .then((response) => {
+                console.log('Got preset ' + request['value']);
+                // Wait for the camera to move before reading its position
+                presetTimer = window.setTimeout(on_save_preset_timer, wait_for_preset, a_preset_number);
+            })
+            .catch((a_error) => {
+                // TODO: See if and how the camera complains about an out of
+                // range preset number.
+                // If a_preset_number number is 0, try again with 1.
+                // For any other value, save results to a JSON file (see below)
+                document.getElementById("showResults").innerHTML = 'Failed get preset: ' + a_error;
+                window.clearTimeout(presetTimer);
+                presetTimer = null;
+                document.getElementById("hideable_fields").style.visibility = "visible";
+            });
+    }
+
+    function save_preset_file(a_content, a_fileName, a_contentType) {
+        var a = document.createElement("a");
+        var file = new Blob([a_content], {type: a_contentType});
+        a.href = URL.createObjectURL(file);
+        a.download = a_fileName;
+        a.click();
+        document.getElementById("showResults").innerHTML = 'Processing of presets complete';
+    }
+
+    function on_save_preset_timer(a_preset_number) {
+        // Read the camera's position and zoom
+        presetTimer = null;
+        request = {};
+        request['command'] = 'report';
+        send_visca_request(request)
+            .then((response) => {
+                // Save the info for this preset
+                var pre = {"preset":a_preset_number,
+                           "pan":response['pan'],
+                           "tilt":response['tilt'],
+                           "zoom":response['zoom']};
+                presets.push(pre);
+
+                // Set the next preset
+                if (a_preset_number < 3) {
+                    document.getElementById("showResults").innerHTML = 'Processing preset ' + a_preset_number;
+                    do_get_next_preset(a_preset_number+1);
+                }
+                else {
+                    // Sanity check exit
+                    console.log(presets);
+
+                    document.getElementById("hideable_fields").style.visibility = "visible";
+                    json_string = JSON.stringify(presets, null, 4);
+                    save_preset_file(json_string, 'camera_data.json', 'text/plain');
+                }
+            })
+            .catch((a_error) => {
+                document.getElementById("showResults").innerHTML = 'Failed read position: ' + a_error;
+                document.getElementById("hideable_fields").style.visibility = "visible";
+            });
+    }
+
+    // Load all presets from a file
+    // Button wraps the ugly (and now hidden) file-selection control
+    function do_load_presets() {
+        fileElem = document.getElementById('preset_file');
+        if (fileElem) {
+            fileElem.click();
+        }
+    }
+
+    function uploadPresetFile(a_files) {
+        const selectedFile = a_files[0];
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+            presets = JSON.parse(evt.target.result);
+            document.getElementById("hideable_fields").style.visibility = "hidden";
+            do_move_to_next_preset(0);
+        };
+        reader.readAsText(selectedFile);
+    }
+
+    // Move to the position specified by presets[a_preset_index]
+    function do_move_to_next_preset(a_preset_index) {
+        request = {};
+        request['command'] = 'moveto';
+        request['pan']  = presets[a_preset_index].pan;
+        request['tilt'] = presets[a_preset_index].tilt;
+        request['zoom'] = presets[a_preset_index].zoom;
+        document.getElementById("showResults").innerHTML = 'Loading preset ' + presets[a_preset_index].preset;
+        send_visca_request(request)
+            .then((response) => {
+                console.log('Moved to preset[' + a_preset_index + ']');
+                // Wait for the camera to move before saving as preset
+                presetTimer = window.setTimeout(on_load_preset_timer, wait_for_preset, a_preset_index);
+            })
+            .catch((a_error) => {
+                document.getElementById("showResults").innerHTML = 'Failed move: ' + a_error;
+                document.getElementById("hideable_fields").style.visibility = "visible";
+                window.clearTimeout(presetTimer);
+                presetTimer = null;
+            });
+    }
+
+    function on_load_preset_timer(a_preset_index) {
+        // Set a camera preset
+        presetTimer = null;
+        request = {};
+        request['command'] = 'set-preset';
+        request['value'] = presets[a_preset_index].preset;
+        send_visca_request(request)
+            .then((response) => {
+                console.log('Loaded preset ' + request['value']);
+                a_preset_index = a_preset_index + 1;
+                if (a_preset_index < presets.length) {
+                    document.getElementById("showResults").innerHTML = 'Loaded preset ' + request['value'];
+                    do_move_to_next_preset(a_preset_index);
+                }
+                else {
+                    document.getElementById("hideable_fields").style.visibility = "visible";
+                    document.getElementById("showResults").innerHTML = 'Finished loading presets'
+                }
+            })
+            .catch((a_error) => {
+                document.getElementById("hideable_fields").style.visibility = "visible";
+                document.getElementById("showResults").innerHTML = 'Failed set preset: ' + a_error;
+            });
+    }
     </script>
 </head>
 
@@ -269,134 +462,150 @@
         color: white;
     }
     .arrow:hover {
-        color: blue;
+        color: #A0A0A0;
     }
     .arrow:active {
-        color: green;
+        color: #707070;
+    }
+
+    .cls-1 {
+        fill:none;
+        stroke:#FFFFFF;
+        stroke-linecap:round;
+        stroke-linejoin:round;
+        stroke-width:4px;
     }
 </style>
 
 <body>
 
-<div style="position:relative; top:0px; left:0px;">
+<div id="showResults">
+    results
+</div>
+
+<div id="hideable_fields" style="position:relative; top:0px; left:0px;">
+    <br><br>
     <label for="camera">Camera address:</label>
     <input id="camera" type="number" value="1">
     &nbsp;&nbsp;<button onclick="do_read_version_info()">Read Camera Info</button>
     &nbsp;&nbsp;<button onclick="do_read_position()">Read Position</button>
     <br><br>
-    <label for="camera">Pan:</label>
+    <label for="pan_val">Pan:</label>
     <input id="pan_val" type="number" value="1">
-    <label for="camera">Tilt:</label>
+    <label for="tilt_val">Tilt:</label>
     <input id="tilt_val" type="number" value="1">
-    <label for="camera">Zoom:</label>
+    <label for="zoom_val">Zoom:</label>
     <input id="zoom_val" type="number" value="1">
     <button onclick="do_move()">Move to</button>
     <br><br>
-    <label for="camera">Preset Number:</label>
+    <label for="preset_number">Preset Number:</label>
     <input id="preset_number" type="number" value="1">
     <button onclick="do_show_preset()">Show Preset</button>
     <button onclick="do_set_preset()">Set Preset</button>
+    <button onclick="do_save_presets()">Save Presets...</button>
+    <button onclick="do_load_presets()">Load Presets...</button>
+    <input type="file" id="preset_file" style="display:none" accept=".json,.txt,.xml" onchange="uploadPresetFile(this.files);">
     <br><br>
-    <div id="showResults">
-        y
-    </div>
-</div>
+    <label for="bytes_to_send">Bytes to send:</label>
+    <input id="bytes_to_send" type="text">
+    <label for="reply_length">response bytes expected:</label>
+    <input id="reply_length" type="number" value="0">
+    <button onclick="do_send_raw()">Send raw bytes</button>
 
-<!----------------- Pan/Tilt buttons ----------------------->
-<div style="position:relative; top:160px; left:100px; width:250px; height:102px; background:#808080;">
-<div style="position:absolute; top:0px; left:34px; width:34px; height:17px;">
-    <svg id="slew_up" class="arrow" width="34" height="17"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
-        onmouseleave="on_mouseleave(this);">
-        <path d="M 0 17  L 17 0  L 34 17  Z" fill="currentColor"/>
+<!----------------- Pan/Tilt/Zoom buttons ----------------------->
+<div style="position:relative; top:100px; left:100px; width:200px; height:100px; background:#3A393A;">
+<div style="position:absolute; top:0px; left:38px; width:22px; height:19px;">
+    <svg id="slew_up" class="arrow" width="22" height="19"
+        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
+        <path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/>
     </svg>
 </div>
-<div style="position:absolute; top:17px; left:34px; width:34px; height:17px;">
-    <svg id="jog_up" class="arrow" width="34" height="17"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
-        onmouseleave="on_mouseleave(this);">
-        <path d="M 0 17  L 17 0  L 34 17  Z" fill="currentColor"/>
+<div style="position:absolute; top:19px; left:38px; width:22px; height:19px;">
+    <svg id="jog_up" class="arrow" width="22" height="19"
+        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
+        <path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/>
     </svg>
 </div>
-
-<div style="position:absolute; top:34px; left:0px; width:17px; height:34px;">
-    <svg id="slew_left" class="arrow" width="17" height="34"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
-        onmouseleave="on_mouseleave(this);">
-        <path d="M 17 34  L 0 17  L 17 0  Z" fill="currentColor"/>
+<div style="position:absolute; top:38px; left:0px; width:19px; height:22px;">
+    <svg id="slew_left" class="arrow" width="19" height="22"
+        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
+        <path d="M 19 22  L 0 11  L 19 0  Z" fill="currentColor"/>
     </svg>
 </div>
-<div style="position:absolute; top:34px; left:17px; width:17px; height:34px;">
-    <svg id="jog_left" class="arrow" width="17" height="34"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
-        onmouseleave="on_mouseleave(this);">
-        <path d="M 17 34  L 0 17  L 17 0  Z" fill="currentColor"/>
+<div style="position:absolute; top:38px; left:19px; width:19px; height:19px;">
+    <svg id="jog_left" class="arrow" width="19" height="22"
+        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
+        <path d="M 19 22  L 0 11  L 19 0  Z" fill="currentColor"/>
     </svg>
 </div>
-<div style="position:absolute; top:41px; left:34px; width:34px; height:17px; font-size:13px; text-align: center;">
-    move
-</div>
-<div style="position:absolute; top:34px; left:68px; width:17px; height:34px;">
-    <svg id="jog_right" class="arrow" width="17" height="34"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
-        onmouseleave="on_mouseleave(this);">
-        <path d="M 0 0  L 17 17  L 0 34  Z" fill="currentColor"/>
+<div style="position:absolute; top:39px; left:39px; width:20px; height:20px;">
+    <!-- Pan/tilt (crossed double-headed arrows) image -->
+    <svg class="cls-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 54.3 53">
+       <polyline points="12.43 18.83 1.5 23.23 5.9 34.17"/>
+       <polyline points="41.87 18.83 52.8 23.23 48.4 34.17"/>
+       <path     d="M1.5,23.66 q25,11.36,50,0"/>
+       <polyline points="35.48 43.17 27.15 51.5 18.82 43.17"/>
+       <polyline points="18.82 9.83 27.15 1.5 35.48 9.83"/>
+       <polyline points="27.15 51.5 27.15 32.06 27.15 20.94 27.15 1.5"/>
     </svg>
 </div>
-<div style="position:absolute; top:34px; left:85px; width:17px; height:34px;">
-    <svg id="slew_right" class="arrow" width="17" height="34"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
-        onmouseleave="on_mouseleave(this);">
-        <path d="M 0 0  L 17 17  L 0 34  Z" fill="currentColor"/>
+<div style="position:absolute; top:38px; left:60px; width:19px; height:22px;">
+    <svg id="jog_right" class="arrow" width="19" height="22"
+        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
+        <path d="M 0 0  L 19 11  L 0 22  Z" fill="currentColor"/>
     </svg>
 </div>
-
-<div style="position:absolute; top:68px; left:34px; width:34px; height:17px;">
-    <svg id="jog_down" class="arrow" width="34" height="17"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
-        onmouseleave="on_mouseleave(this);">
-        <path d="M 0 0  L 17 17  L 34 0  Z" fill="currentColor"/>
+<div style="position:absolute; top:38px; left:79px; width:19px; height:22px;">
+    <svg id="slew_right" class="arrow" width="19" height="22"
+        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
+        <path d="M 0 0  L 19 11  L 0 22  Z" fill="currentColor"/>
     </svg>
 </div>
-<div style="position:absolute; top:85px; left:34px; width:34px; height:17px;">
-    <svg id="slew_down" class="arrow" width="34" height="17"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
-        onmouseleave="on_mouseleave(this);">
-        <path d="M 0 0  L 17 17  L 34 0  Z" fill="currentColor"/>
+<div style="position:absolute; top:60px; left:38px; width:22px; height:19px;">
+    <svg id="jog_down" class="arrow" width="22" height="19"
+        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
+        <path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/>
+    </svg>
+</div>
+<div style="position:absolute; top:79px; left:38px; width:22px; height:19px;">
+    <svg id="slew_down" class="arrow" width="22" height="19"
+        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
+        <path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/>
     </svg>
 </div>
 
 <!----------------- Zoom buttons ----------------------->
-<div style="position:absolute; top:0px; left:134px; width:34px; height:17px;">
-    <svg id="slew_in" class="arrow" width="34" height="17"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
-        onmouseleave="on_mouseleave(this);">
-        <path d="M 0 17  L 17 0  L 34 17  Z" fill="currentColor"/>
+<div style="position:absolute; top:0px; left:138px; width:22px; height:19px;">
+    <svg id="slew_in" class="arrow" width="22" height="19"
+        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
+        <path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/>
     </svg>
 </div>
-<div style="position:absolute; top:17px; left:134px; width:34px; height:17px;">
-    <svg id="jog_in" class="arrow" width="34" height="17"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
-        onmouseleave="on_mouseleave(this);">
-        <path d="M 0 17  L 17 0  L 34 17  Z" fill="currentColor"/>
+<div style="position:absolute; top:19px; left:138px; width:22px; height:19px;">
+    <svg id="jog_in" class="arrow" width="22" height="19"
+        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
+        <path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/>
     </svg>
 </div>
-<div style="position:absolute; top:41px; left:134px; width:34px; height:17px; font-size:13px; text-align: center;">
-    zoom
-</div>
-<div style="position:absolute; top:68px; left:134px; width:34px; height:17px;">
-    <svg id="jog_out" class="arrow" width="34" height="17"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
-        onmouseleave="on_mouseleave(this);">
-        <path d="M 0 0  L 17 17  L 34 0  Z" fill="currentColor"/>
+<div style="position:absolute; top:39px; left:138px; width:20px; height:20px;">
+    <!-- Zoom (magnifying glass) image -->
+    <svg class="cls-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <circle cx="45" cy="47" r="35" fill="transparent" stroke-width="8" />
+        <line x1="70" y1="70" x2="90" y2="90" stroke-width="12" />
     </svg>
 </div>
-<div style="position:absolute; top:85px; left:134px; width:34px; height:17px;">
-    <svg id="slew_out" class="arrow" width="34" height="17"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);"
-        onmouseleave="on_mouseleave(this);">
-        <path d="M 0 0  L 17 17  L 34 0  Z" fill="currentColor"/>
+<div style="position:absolute; top:60px; left:138px; width:22px; height:19px;">
+    <svg id="jog_out" class="arrow" width="22" height="19"
+        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
+        <path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/>
     </svg>
+</div>
+<div style="position:absolute; top:79px; left:138px; width:22px; height:19px;">
+    <svg id="slew_out" class="arrow" width="22" height="19"
+        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
+        <path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/>
+    </svg>
+</div>
 </div>
 </div>
 
