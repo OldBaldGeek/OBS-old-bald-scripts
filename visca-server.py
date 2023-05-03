@@ -20,7 +20,7 @@ import urllib.parse
 import serial
 import json
 
-g_version = "1.1"
+g_version = "1.2"
 
 # Default configuration values overrideable by commandline parameters.
 # Originally had hostname = "localhost" here and in the Javascript client.
@@ -51,13 +51,16 @@ class ErrorEx(Exception):
 # Low-level VISCA functions
 class ViscaTalker:
     def __init__(self, a_serialPort, a_serialBaudRate):
-        try:
-            self.serial_port = serial.Serial(a_serialPort, a_serialBaudRate,
-                                             timeout=1, write_timeout=2)
-            print(f'Opened serial port {a_serialPort} at {a_serialBaudRate} baud')
-        except serial.SerialException as exc:
-            self.serial_port = None
-            raise ErrorEx(str(exc))
+        self.serial_port = None
+        if a_serialPort == 'SIM':
+            print(f'Using simulated serial port')
+        else:
+            try:
+                self.serial_port = serial.Serial(a_serialPort, a_serialBaudRate,
+                                                 timeout=1, write_timeout=2)
+                print(f'Opened serial port {a_serialPort} at {a_serialBaudRate} baud')
+            except serial.SerialException as exc:
+                raise ErrorEx(str(exc))
 
         # Byte arrays with message templates
         # Some bytes are overwritten by functions which use them, so be careful
@@ -71,37 +74,54 @@ class ViscaTalker:
         self.visca_goto_preset  = bytearray.fromhex('80 01 04 3F 02 00 FF')
         self.visca_set_preset   = bytearray.fromhex('80 01 04 3F 01 00 FF')
         self.visca_version_inq  = bytearray.fromhex('80 09 00 02 FF')
+
         self.visca_ack_complete = bytearray.fromhex('90 41 FF 90 51 FF')
 
     # Send the message a_bytes to the specified a_address
     # return a bytearrary with the reply if a_rxExpected is non-zero
     # Throws ErrorEx on failure
     def send_visca(self, a_address, a_bytes, a_rxExpected):
-        if self.serial_port is None:
-            raise ErrorEx('Serial Port not open')
-
-        # Discard any stale input
-        self.serial_port.reset_input_buffer()
-
         a_bytes[0] = int(a_address) + 0x80
-        print('Sending', len(a_bytes), 'bytes:', a_bytes.hex())
-        self.serial_port.write(a_bytes)
+        if self.serial_port is None:
+            print('Simulate sending', len(a_bytes), 'bytes:', a_bytes.hex(' '))
+            if a_rxExpected != 0:
+                # Reply data expected
+                s = bytearray(a_rxExpected)
+                print('Simulate receiving', a_rxExpected, 'bytes:', s.hex(' '))
+                return s
 
-        if a_rxExpected != 0:
-            # Reply data expected
-            s = self.serial_port.read(a_rxExpected)
-            print('Received', len(s), 'bytes:', s.hex())
-            if len(s) != a_rxExpected:
-                raise ErrorEx('Missing or short serial response')
-            return s
         else:
-            # No data reply: should get Ack, Complete
-            # 0  1  2  3  4  5
-            # 90 41 FF 90 51 FF
-            s = self.serial_port.read(6)
-            #print('Received Ack/Comp', len(s), 'bytes:', s.hex())
-            if s != self.visca_ack_complete:
-                raise ErrorEx('Missing or incorrect serial response')
+            # Discard any stale input before we send
+            self.serial_port.reset_input_buffer()
+            print('Sending', len(a_bytes), 'bytes:', a_bytes.hex(' '))
+            self.serial_port.write(a_bytes)
+
+            if a_rxExpected != 0:
+                # Reply data expected
+                s = self.serial_port.read(a_rxExpected)
+                print('Received', len(s), 'bytes:', s.hex(' '))
+                if len(s) != a_rxExpected:
+                    raise ErrorEx('Missing or short serial response')
+                return s
+            else:
+                # No data reply: should get Ack, Completion
+                #   0  1  2   3  4  5
+                #   X0 41 FF  X0 51 FF
+                s = self.serial_port.read(6)
+                #print('Received Ack/Comp', len(s), 'bytes:', s.hex())
+                #
+                # We MIGHT check for detailed error responses:
+                #   X0 6Y 01 FF Message length error
+                #   X0 6Y 02 FF Syntax Error
+                #   X0 6Y 03 FF Command buffer full
+                #   X0 6Y 04 FF Command canceled
+                #   X0 6Y 05 FF No socket (to be canceled)
+                #   X0 6Y 41 FF Command not executable
+                repAddr = (int(a_address) + 8) << 4
+                self.visca_ack_complete[0] = repAddr
+                self.visca_ack_complete[3] = repAddr
+                if s != self.visca_ack_complete:
+                    raise ErrorEx('Missing or incorrect serial response')
 
     #===========================================================================
     # Validate a string or integer parameter value as an integer
@@ -538,6 +558,34 @@ class MyServer(BaseHTTPRequestHandler):
         response['baud_rate'] = g_serialBaudRate
         return response
 
+    #===========================================================================
+    # Send a string of bytes
+    def do_cmd_send_raw(self, a_post_body):
+        response = {}
+        response['status'] = 'fail'
+        camera = a_post_body.get("camera", "1")
+        data = a_post_body.get("bytes-to-send")
+        print(data)
+        bytes_to_send = bytearray.fromhex(data)
+        bytes_to_send.insert(0,0)   # space for the address
+        expected_reply = int(a_post_body.get("reply-length", 0))
+        try:
+            if bytes_to_send == None:
+                raise ErrorEx('missing bytes to send')
+
+            if expected_reply == 0:
+                g_viscaTalker.send_visca(camera, bytes_to_send, expected_reply)
+                response['response-bytes'] = ''
+            else:
+                s = g_viscaTalker.send_visca(camera, bytes_to_send, expected_reply)
+                response['response-bytes'] = s.hex(' ')
+
+            response['status'] = "ok"
+        except ErrorEx as ex:
+            response['errors'] = ex.get_errors()
+
+        return response
+
     #==============================================================================
     # Add headers to deal with CORS
     def end_headers(self):
@@ -610,6 +658,8 @@ class MyServer(BaseHTTPRequestHandler):
             response = self.do_cmd_version_info(post_body)
         elif command == 'about':
             response = self.do_cmd_about(post_body)
+        elif command == 'send_raw':
+            response = self.do_cmd_send_raw(post_body)
 
         else:
             response = {"status":'unknown command'}
@@ -637,8 +687,9 @@ def main():
         print( 'visca-server.py {serial port} {baud rate] {TCP port}')
         print( '  parameters are optional' )
         print( '  - {serial port} serial port for VISCA. Default COM1' )
+        print( '    Specify SIM for simulated operation.' )
         print( '  - {baud rate}   serial baud rate. Default 9600' )
-        print( '  - {baud rate}   HTTP port. Default 8080' )
+        print( '  - {port}        HTTP port. Default 8080' )
 
     if (len(sys.argv) > 1):
         g_serialPort = sys.argv[1]
