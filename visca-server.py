@@ -20,7 +20,7 @@ import urllib.parse
 import serial
 import json
 
-g_version = "1.2"
+g_version = "1.3"
 
 # Default configuration values overrideable by commandline parameters.
 # Originally had hostname = "localhost" here and in the Javascript client.
@@ -96,32 +96,40 @@ class ViscaTalker:
             print('Sending', len(a_bytes), 'bytes:', a_bytes.hex(' '))
             self.serial_port.write(a_bytes)
 
+            s = self.serial_port.timeout = 1    # 1-second normal timeout
             if a_rxExpected != 0:
                 # Reply data expected
                 s = self.serial_port.read(a_rxExpected)
                 print('Received', len(s), 'bytes:', s.hex(' '))
                 if len(s) != a_rxExpected:
-                    raise ErrorEx('Missing or short serial response')
+                    raise ErrorEx('Incorrect serial response: ' + s.hex(' '))
                 return s
             else:
                 # No data reply: should get Ack, Completion
                 #   0  1  2   3  4  5
-                #   X0 41 FF  X0 51 FF
+                #   X0 4s FF  X0 5s FF
+                # where "X" is the remote address | 8 and s is the socket number.
                 s = self.serial_port.read(6)
-                #print('Received Ack/Comp', len(s), 'bytes:', s.hex())
-                #
-                # We MIGHT check for detailed error responses:
-                #   X0 6Y 01 FF Message length error
-                #   X0 6Y 02 FF Syntax Error
-                #   X0 6Y 03 FF Command buffer full
-                #   X0 6Y 04 FF Command canceled
-                #   X0 6Y 05 FF No socket (to be canceled)
-                #   X0 6Y 41 FF Command not executable
-                repAddr = (int(a_address) + 8) << 4
-                self.visca_ack_complete[0] = repAddr
-                self.visca_ack_complete[3] = repAddr
-                if s != self.visca_ack_complete:
-                    raise ErrorEx('Missing or incorrect serial response')
+                got = len(s)
+                print('Received Ack/Comp', got, 'bytes:', s.hex(' '))
+                repAddr = (int(a_address) | 8) << 4
+                if (got < 3) or (s[0] != repAddr) or ((s[1] & 0xF0) != 0x40):
+                    raise ErrorEx('Expected Ack, got ' + s.hex(' '))
+
+                # Aver VC520+ returns Completion immediately for all commands.
+                # Vaddio HD-20 may delay Completion until the command is done,
+                # which could be 10 seconds for a long pan at slow speed.
+                # (Oddly, HD-20 delays Completion for goto-preset, but NOT for
+                # move-absolute, which may take just as long.)
+                if got < 6:
+                    # Try to read the remaining bytes using a long timeout.
+                    # (Timeout is reset before the next read)
+                    self.serial_port.timeout = 20
+                    s = s + self.serial_port.read(6 - got)
+                    print('  Then received', len(s), 'bytes:', s.hex(' '))
+
+                if (len(s) < 6) or (s[3] != repAddr) or ((s[4] & 0xF0) != 0x50):
+                    raise ErrorEx('Expected Completion, got ' + s.hex(' '))
 
     #===========================================================================
     # Validate a string or integer parameter value as an integer
@@ -168,7 +176,14 @@ class ViscaTalker:
     #===========================================================================
     # Set the pan and tilt
     # Throws ErrorEx on failure
-    def set_position(self, a_address, a_pan, a_tilt):
+    def set_position(self, a_address, a_pan, a_tilt, a_speed):
+        # Sony docs say speed is [4], and [5] is 0
+        # Aver docs say [4] and [5] both 0
+        # Vaddio HD-20 docs say pan-speed is [5], tilt-speed [4], but
+        # HD-20 may reverse them. Test shows HD-20 actually uses [4]
+        self.visca_set_position[4] = self.parm_as_int(a_speed)
+        self.visca_set_position[5] = self.parm_as_int(a_speed)
+
         val = self.signed_parm_as_unsigned(a_pan)
         self.visca_set_position[6] = (val >> 12) & 0x0F
         self.visca_set_position[7] = (val >> 8)  & 0x0F
@@ -220,31 +235,33 @@ class ViscaTalker:
             raise
 
     #===========================================================================
-    # Start or stop pan or tilt: "up", "down", "left", "right", or "stop"
+    # Start or stop pan and/or tilt: direction is up/down/left/right/stop. Speed as desired
     # Throws ErrorEx on failure
-    def do_slew(self, a_address, a_direction, a_speed):
+    def do_slew(self, a_address, a_pan_direction, a_pan_speed, a_tilt_direction, a_tilt_speed):
         try:
-            self.visca_slew[4] = 0x00
-            self.visca_slew[5] = 0x00
-            self.visca_slew[6] = 0x03
-            self.visca_slew[7] = 0x03
-            if a_direction == 'up':
-                self.visca_slew[5] = int(a_speed)
-                self.visca_slew[7] = 0x01
-            elif a_direction == 'down':
-                self.visca_slew[5] = int(a_speed)
-                self.visca_slew[7] = 0x02
-            elif a_direction == 'left':
-                self.visca_slew[4] = int(a_speed)
+            # Sony and Aver docs say pan-speed is [4] (though Aver VC520+ ignores speed)
+            # Vaddio HD-20 docs say pan-speed is [5], but HD-20 actually uses [4].
+            self.visca_slew[4] = self.parm_as_int(a_pan_speed)
+            if a_pan_direction == 'left':
                 self.visca_slew[6] = 0x01
-            elif a_direction == 'right':
-                self.visca_slew[4] = int(a_speed)
+            elif a_pan_direction == 'right':
                 self.visca_slew[6] = 0x02
-            elif a_direction == 'stop':
+            elif a_pan_direction == 'stop':
                 self.visca_slew[6] = 0x03
-                self.visca_slew[7] = 0x03
+                self.visca_slew[4] = 0
             else:
-                raise ErrorEx('Invalid direction')
+                raise ErrorEx('Invalid pan direction')
+
+            self.visca_slew[5] = self.parm_as_int(a_tilt_speed)
+            if a_tilt_direction == 'up':
+                self.visca_slew[7] = 0x01
+            elif a_tilt_direction == 'down':
+                self.visca_slew[7] = 0x02
+            elif a_tilt_direction == 'stop':
+                self.visca_slew[7] = 0x03
+                self.visca_slew[5] = 0
+            else:
+                raise ErrorEx('Invalid tilt direction')
 
             self.send_visca(a_address, self.visca_slew, 0)
         except ErrorEx as ex:
@@ -278,6 +295,7 @@ class ViscaTalker:
             val = self.parm_as_int(a_preset)
             self.visca_goto_preset[5] = val
             self.send_visca(a_address, self.visca_goto_preset, 0)
+
         except ErrorEx as ex:
             ex.add('goto_preset failed')
             raise
@@ -340,16 +358,41 @@ class MyServer(BaseHTTPRequestHandler):
         pan    = a_post_body.get("pan")
         tilt   = a_post_body.get("tilt")
         zoom   = a_post_body.get("zoom")
+        speed  = a_post_body.get("speed",  "0")
 
         try:
             if pan is not None and tilt is not None:
-                g_viscaTalker.set_position( camera, pan, tilt )
+                g_viscaTalker.set_position( camera, pan, tilt, speed )
             if zoom is not None:
                 g_viscaTalker.set_zoom( camera, zoom )
             response['status'] = 'ok'
 
         except ErrorEx as ex:
             response['errors'] = ex.get_errors()
+
+        return response
+
+    #===========================================================================
+    # Slew (pan and tilt together)
+    def do_cmd_slew(self, a_post_body):
+        response = {}
+        response['status'] = 'fail'
+
+        camera      = a_post_body.get("camera", "1")
+        pan         = a_post_body.get("pan-value")
+        tilt        = a_post_body.get("tilt-value")
+        pan_speed   = a_post_body.get("pan-speed", 0)
+        tilt_speed  = a_post_body.get("tilt-speed", 0)
+
+        if (pan is None) and (tilt is None):
+            response['errors'] = ["missing pan or tilt direction"]
+        else:
+            try:
+                g_viscaTalker.do_slew(camera, pan, pan_speed, tilt, tilt_speed)
+                response['status'] = 'ok'
+
+            except ErrorEx as ex:
+                response['errors'] = ex.get_errors()
 
         return response
 
@@ -361,7 +404,7 @@ class MyServer(BaseHTTPRequestHandler):
 
         camera = a_post_body.get("camera", "1")
         pan    = a_post_body.get("value")
-        speed  = a_post_body.get("speed",  "0")
+        speed  = a_post_body.get("speed", 0)
 
         # pan may be left, right, or stop for slew operation
         # pan may be +N or -N for jog (relative to current position)
@@ -370,7 +413,7 @@ class MyServer(BaseHTTPRequestHandler):
         else:
             try:
                 if (pan == 'left') or (pan == 'right') or (pan == 'stop'):
-                    g_viscaTalker.do_slew( camera, pan, speed )
+                    g_viscaTalker.do_slew(camera, pan, speed, 'stop', 0)
                 else:
                     try:
                         pan_num = int(pan)
@@ -380,7 +423,7 @@ class MyServer(BaseHTTPRequestHandler):
                     # Read current position
                     pan_now, tilt_now = g_viscaTalker.get_position( camera )
                     # Set updated position
-                    g_viscaTalker.set_position( camera, pan_now + pan_num, tilt_now )
+                    g_viscaTalker.set_position( camera, pan_now + pan_num, tilt_now, speed )
 
                 response['status'] = 'ok'
 
@@ -397,7 +440,7 @@ class MyServer(BaseHTTPRequestHandler):
 
         camera = a_post_body.get("camera", "1")
         tilt   = a_post_body.get("value")
-        speed  = a_post_body.get("speed",  "0")
+        speed  = a_post_body.get("speed", 0)
         
         # tilt may be up, down, or stop for slew operation
         # tilt may be +N or -N for jog (relative to current position)
@@ -406,7 +449,7 @@ class MyServer(BaseHTTPRequestHandler):
         else:
             try:
                 if (tilt == 'up') or (tilt == 'down') or (tilt == 'stop'):
-                    g_viscaTalker.do_slew( camera, tilt, speed )
+                    g_viscaTalker.do_slew( camera, 'stop', 0, tilt, speed )
                 else:
                     try:
                         tilt_num = int(tilt)
@@ -416,7 +459,7 @@ class MyServer(BaseHTTPRequestHandler):
                     # Read current position
                     pan_now, tilt_now = g_viscaTalker.get_position( camera )
                     # Set updated position
-                    g_viscaTalker.set_position( camera, pan_now, tilt_now + tilt_num )
+                    g_viscaTalker.set_position( camera, pan_now, tilt_now + tilt_num, speed )
 
                 response['status'] = 'ok'
 
@@ -642,6 +685,8 @@ class MyServer(BaseHTTPRequestHandler):
             response = self.do_cmd_pan(post_body)
         elif command == 'tilt':
             response = self.do_cmd_tilt(post_body)
+        elif command == 'slew':
+            response = self.do_cmd_slew(post_body)
         elif command == 'zoom':
             response = self.do_cmd_zoom(post_body)
         elif command == 'moveto':
@@ -662,7 +707,7 @@ class MyServer(BaseHTTPRequestHandler):
             response = self.do_cmd_send_raw(post_body)
 
         else:
-            response = {"status":'unknown command'}
+            response = {"status":"fail", "errors":"unknown command"}
 
         response_string = json.dumps(response, indent=4)
 
