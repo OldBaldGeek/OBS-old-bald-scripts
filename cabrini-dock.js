@@ -3,7 +3,7 @@
 // - slide show clickable buttons (alternative to hotkeys used by script)
 // - preview of current and next slide
 // - some basic statistics
-var g_version = "1.2";
+var g_version = "1.3";
 
 // OBS Websockets documentation
 //    https://github.com/obsproject/obs-websocket/blob/master/docs/generated/protocol.md
@@ -11,7 +11,7 @@ var g_version = "1.2";
 //    https://github.com/obsproject/obs-websocket/blob/master/docs/generated/protocol.json
 
 // Default address of the AVER camera server, in case we can't read the configuration file
-var g_aver_address = 'localhost:36680';
+var g_aver_address = '127.0.0.1:36680';
 
 // Address of the OBS Websocket 5.0 server
 var g_websocket_address = "127.0.0.1:4455";
@@ -105,7 +105,10 @@ class CameraController
             var req = new XMLHttpRequest();
             var url = "http://" + g_aver_address + "/" + a_command;
             console.log('Sending: ' + url)
-            req.open("GET", url, true);
+            // TODO: need to either be synchronous (third parm false) or refit
+            // to use a promise.
+            // Otherwise a command MIGHT be seen by the server BEFORE the camera selection.
+            req.open("GET", url, false);
             req.onload = function (e) {
                 // 200 for web file, 0 for local file
                 if (req.readyState === 4) {
@@ -142,7 +145,7 @@ class CameraController
             field.innerHTML = a_text;
 
             if (a_duration_msec > 0) {
-                this.msg_timer = setTimeout( function (a_cam) {
+                this.msg_timer = setTimeout( function(a_cam) {
                     // On timeout, set the status back to idle
                     a_cam.msg_timer = null;
                     a_cam.showResult(default_status, 0);
