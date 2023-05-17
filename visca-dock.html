@@ -6,7 +6,7 @@
     <script>
 
     // Originally had hostname = "localhost" here and in the Visca server.
-    // But in Chrome (not Firefox) we see consistent attempts to
+    // But in Chrome (though not Firefox) we see consistent attempts to
     // open TCP sessions in IPv6, getting RST,ACK (from server or Windows?)
     // Chrome waits about 250 msec and does another IPv6 SYN on a new port
     // After getting another RST,ACK, Chrome waits about 50 msec, then
@@ -14,24 +14,14 @@
     // Using 127.0.0.1 eliminates the RST,ACKs and delays.
     var url = "http://127.0.0.1:8080/server";
 
-    var request = {};
-    var actionState = 'IDLE';
-    var jog_repeat = 250;       // Jog repeats every jog_repeat msec if mouse held down
-    var jogTimer = null;
-
-    // Used by Save and Load presets
-    var wait_for_preset = 2000; // msec to wait for camera movement
-    var presetTimer = null;
-    var presets = [];
-
     // Send a VISCA request, returning a promise.
     // - Call resolve() on successful transaction
     // - Call reject() on error
     var sendCount = 0;
-    function send_visca_request( a_request ) {
+    function send_visca_request(a_request) {
+        sendCount = sendCount + 1;
         a_request['camera'] = document.getElementById("camera").value;
         a_request['sendCount'] = sendCount;
-        sendCount = sendCount + 1;
         console.log( "Send VISCA request", a_request );
 
         return new Promise(
@@ -40,7 +30,7 @@
                 req.open('POST', url);
                 req.setRequestHeader('Content-Type', 'application/json');
 
-                req.onload = function() {
+                req.onload = () => {
                     // 200 for web file; 0 for local file
                     // 404 for URL path not found; etc.
                     if (req.readyState === 4) {
@@ -54,6 +44,7 @@
                                 reject(response.errors);
                             }
                             else {
+                                response['sendCount'] = sendCount;
                                 resolve(response);
                             }
                         } else {
@@ -62,7 +53,7 @@
                     }
                 };
 
-                req.onerror = function() {
+                req.onerror = () => {
                     // Annoyingly, there seems to be nothing to tell us
                     // WHAT failed: no server, ...
                     // statusText is empty
@@ -74,159 +65,11 @@
               });
     }
 
-    function on_mousedown( a_control ) {
-        request = {};
-
-        actionState = 'SLEW';
-        switch (a_control.id) {
-        case 'slew_up':
-            request['command'] = 'tilt';
-            request['value'] = 'up';
-            break;
-
-        case 'slew_down':
-            request['command']= 'tilt';
-            request['value'] = 'down';
-            break;
-
-        case 'slew_left':
-            request['command'] = 'pan';
-            request['value'] = 'left';
-            break;
-
-        case 'slew_right':
-            request['command'] = 'pan';
-            request['value'] = 'right';
-            break;
-
-        case 'slew_in':
-            request['command'] = 'zoom';
-            request['value'] = 'in';
-            break;
-
-        case 'slew_out':
-            request['command'] = 'zoom';
-            request['value'] = 'out';
-            break;
-
-        case 'jog_up':
-            request['command'] = 'tilt';
-            request['value'] = '1';
-            actionState = 'JOG';
-            break;
-
-        case 'jog_down':
-            request['command'] = 'tilt';
-            request['value'] = '-1';
-            actionState = 'JOG';
-            break;
-
-        case 'jog_left':
-            request['command'] = 'pan';
-            request['value'] = '1';
-            actionState = 'JOG';
-            break;
-
-        case 'jog_right':
-            request['command'] = 'pan';
-            request['value'] = '-1';
-            actionState = 'JOG';
-            break;
-
-        case 'jog_in':
-            request['command'] = 'zoom';
-            request['value'] = '1';
-            actionState = 'JOG';
-            break;
-
-        case 'jog_out':
-            request['command'] = 'zoom';
-            request['value'] = '-1';
-            actionState = 'JOG';
-            break;
-
-        default:
-            var str = "Error: unexpected control ID " + a_control.id;
-            document.getElementById("showResults").innerHTML = str;
-            console.log( str );
-            return;
-        }
-
-        // a_control.setAttribute("color", "blue");
-        if (actionState == 'JOG') {
-            // Jog: send command, start timer to repeat jog
-            send_visca_request(request)
-                .then((response) => {
-                    if (actionState == 'JOG') {
-                        // If button still active, start a timer to repeat jog.
-                        // Normally the case, but a delay in the server may allow
-                        // button-up before we get here.
-                        console.log('jog success, start jog timer');
-                        jogTimer = window.setTimeout(on_timer, jog_repeat, request);
-                    }
-                })
-                .catch((a_error) => {
-                    document.getElementById("showResults").innerHTML = 'Failed mousedown: ' + a_error;
-                });
-        }
-        else {
-            // slew: send start command
-            send_visca_request(request)
-                .then((response) => {
-                    console.log('mousedown slew success');
-                })
-                .catch((a_error) => {
-                    document.getElementById("showResults").innerHTML = 'Failed mousedown slew: ' + a_error;
-                });
-        }
-    }
-
-    function on_mouseup( a_control ) {
-        if (actionState == 'JOG') {
-            actionState = 'IDLE';
-            console.log('mouseup stopping jog timer');
-            window.clearTimeout(jogTimer);
-            jogTimer = null;
-        }
-        else if (actionState == 'SLEW') {
-            // Stop slew
-            request['value'] = 'stop';
-            send_visca_request(request)
-                .then((response) => {
-                    console.log('mouseup stopped slew');
-                })
-                .catch((a_error) => {
-                    document.getElementById("showResults").innerHTML = 'Failed mouseup: ' + a_error;
-                })
-                .finally(() => {
-                    actionState = 'IDLE';
-                });
-        }
-    }
-
-    function on_mouseleave(a_control) {
-        if (actionState != 'IDLE') {
-            // Terminate any commands in progress
-            on_mouseup(a_control);
-        }
-    }
-
-    function on_timer(a_request) {
-        if (actionState == 'JOG') {
-            console.log('timer: repeat jog');
-			send_visca_request(a_request)
-				.then((response) => {
-					console.log('jog timer success. Restaring timer');
-					jogTimer = window.setTimeout(on_timer, jog_repeat, a_request)
-				})
-				.catch((a_error) => {
-					document.getElementById("showResults").innerHTML = 'Failed mouse timer: ' + a_error;
-				});
-		}
-    }
+    //==========================================================================
+    // Button handlers for various camera actions
 
     function do_read_position() {
-        request = {};
+        var request = {};
         request['command'] = 'report';
         send_visca_request(request)
             .then((response) => {
@@ -244,7 +87,7 @@
     }
 
     function do_read_version_info() {
-        request = {};
+        var request = {};
         request['command'] = 'version-info';
         send_visca_request(request)
             .then((response) => {
@@ -258,7 +101,7 @@
     }
 
     function do_show_preset() {
-        request = {};
+        var request = {};
         request['command'] = 'go-preset';
         request['value'] = document.getElementById("preset_number").value;
         send_visca_request(request)
@@ -271,7 +114,7 @@
     }
 
     function do_set_preset() {
-        request = {};
+        var request = {};
         request['command'] = 'set-preset';
         request['value'] = document.getElementById("preset_number").value;
         send_visca_request(request)
@@ -284,8 +127,9 @@
     }
 
     function do_move() {
-        request = {};
+        var request = {};
         request['command'] = 'moveto';
+        request['speed'] = document.getElementById("speed_val").value;
         request['pan'] = document.getElementById("pan_val").value;
         request['tilt'] = document.getElementById("tilt_val").value;
         request['zoom'] = document.getElementById("zoom_val").value;
@@ -300,7 +144,7 @@
     }
 
     function do_send_raw() {
-        request = {};
+        var request = {};
         request['command'] = 'send_raw';
         request['bytes-to-send'] = document.getElementById("bytes_to_send").value;
         request['reply-length'] = document.getElementById("reply_length").value;
@@ -315,81 +159,154 @@
             });
     }
 
-    // Fetch all presets and save to a file
-    function do_save_presets() {
-        // Disable controls while we run
-        document.getElementById("hideable_fields").style.visibility = "hidden";
-        presets = [];
-        do_get_next_preset(0)
-    }
+    //==========================================================================
+    // Save and Load presets
+    class SaveAndLoadPresets {
+        constructor(a_wait_for_movement_msec) {
+            this.wait_for_preset = a_wait_for_movement_msec;
+            this.presetTimer = null;
+            this.presets = [];
+        }
 
-    function do_get_next_preset(a_preset_number) {
-        request = {};
-        request['command'] = 'go-preset';
-        request['value'] = a_preset_number;
-        send_visca_request(request)
-            .then((response) => {
-                console.log('Got preset ' + request['value']);
-                // Wait for the camera to move before reading its position
-                presetTimer = window.setTimeout(on_save_preset_timer, wait_for_preset, a_preset_number);
-            })
-            .catch((a_error) => {
-                // TODO: See if and how the camera complains about an out of
-                // range preset number.
-                // If a_preset_number number is 0, try again with 1.
-                // For any other value, save results to a JSON file (see below)
-                document.getElementById("showResults").innerHTML = 'Failed get preset: ' + a_error;
-                window.clearTimeout(presetTimer);
-                presetTimer = null;
-                document.getElementById("hideable_fields").style.visibility = "visible";
-            });
-    }
+        get_next_preset(a_preset_number) {
+            var request = {};
+            request['command'] = 'go-preset';
+            request['value'] = a_preset_number;
+            send_visca_request(request)
+                .then((response) => {
+                    console.log('Got preset ' + request['value']);
+                    // Wait for the camera to move before reading its position
+                    this.presetTimer = window.setTimeout(this.on_save_preset_timer.bind(this),
+                                                         this.wait_for_preset,
+                                                         a_preset_number);
+                })
+                .catch((a_error) => {
+                    if (this.a_preset_number == 0) {
+                        // Some cameras allow preset 0, some don't. Try 1
+                        this.get_next_preset(1);
+                    }
+                    else {
+                        // For any other fail, save results thus far and stop.
+                        document.getElementById("showResults").innerHTML = 'Failed go-preset: ' + a_error;
+                        window.clearTimeout(this.presetTimer);
+                        this.presetTimer = null;
+                        this.save_preset_file();
+                    }
+                });
+        }
 
-    function save_preset_file(a_content, a_fileName, a_contentType) {
-        var a = document.createElement("a");
-        var file = new Blob([a_content], {type: a_contentType});
-        a.href = URL.createObjectURL(file);
-        a.download = a_fileName;
-        a.click();
-        document.getElementById("showResults").innerHTML = 'Processing of presets complete';
-    }
+        save_preset_file() {
+            document.getElementById("hideable_fields").style.visibility = "visible";
 
-    function on_save_preset_timer(a_preset_number) {
-        // Read the camera's position and zoom
-        presetTimer = null;
-        request = {};
-        request['command'] = 'report';
-        send_visca_request(request)
-            .then((response) => {
-                // Save the info for this preset
-                var pre = {"preset":a_preset_number,
-                           "pan":response['pan'],
-                           "tilt":response['tilt'],
-                           "zoom":response['zoom']};
-                presets.push(pre);
+            console.log(this.presets);
+            var json_string = JSON.stringify(this.presets, null, 4);
+            var file = new Blob([json_string], {type: 'text/plain'});
 
-                // Set the next preset
-                if (a_preset_number < 3) {
-                    document.getElementById("showResults").innerHTML = 'Processing preset ' + a_preset_number;
-                    do_get_next_preset(a_preset_number+1);
-                }
-                else {
-                    // Sanity check exit
-                    console.log(presets);
+            var a = document.createElement("a");
+            a.href = URL.createObjectURL(file);
+            a.download = 'camera_data.json';
+            a.click();
+            document.getElementById("showResults").innerHTML = 'Processing of presets complete';
+        }
 
+        on_save_preset_timer(a_preset_number) {
+            // Read the camera's position and zoom
+            this.presetTimer = null;
+
+            var request = {};
+            request['command'] = 'report';
+            send_visca_request(request)
+                .then((response) => {
+                    // Save the info for this preset
+                    var pre = {"preset":a_preset_number,
+                               "pan":response['pan'],
+                               "tilt":response['tilt'],
+                               "zoom":response['zoom']};
+                    this.presets.push(pre);
+
+                    // Set the next preset
+                    if (a_preset_number < 20) {
+                        document.getElementById("showResults").innerHTML = 'Processing preset ' + a_preset_number;
+                        this.get_next_preset(a_preset_number+1);
+                    }
+                    else {
+                        // Sanity check exit
+                        this.save_preset_file();
+                    }
+                })
+                .catch((a_error) => {
+                    document.getElementById("showResults").innerHTML = 'Failed read position: ' + a_error;
                     document.getElementById("hideable_fields").style.visibility = "visible";
-                    json_string = JSON.stringify(presets, null, 4);
-                    save_preset_file(json_string, 'camera_data.json', 'text/plain');
-                }
-            })
-            .catch((a_error) => {
-                document.getElementById("showResults").innerHTML = 'Failed read position: ' + a_error;
-                document.getElementById("hideable_fields").style.visibility = "visible";
-            });
+                });
+        }
+
+        // Convert JSON preset data and start setting presets
+        load(a_json_string) {
+            this.presets = JSON.parse(a_json_string);
+            this.move_to_next_preset(0);
+        }
+
+        // Move to the position specified by presets[a_preset_index]
+        move_to_next_preset(a_preset_index) {
+            var request = {};
+            request['command'] = 'moveto';
+            request['pan']  = this.presets[a_preset_index].pan;
+            request['tilt'] = this.presets[a_preset_index].tilt;
+            request['zoom'] = this.presets[a_preset_index].zoom;
+            document.getElementById("showResults").innerHTML = 'Loading preset ' + this.presets[a_preset_index].preset;
+            send_visca_request(request)
+                .then((response) => {
+                    console.log('Moved to preset[' + a_preset_index + ']');
+                    // Wait for the camera to move before saving as preset
+                    this.presetTimer = window.setTimeout(this.on_load_preset_timer.bind(this),
+                                                         this.wait_for_preset,
+                                                         a_preset_index);
+                })
+                .catch((a_error) => {
+                    document.getElementById("showResults").innerHTML = 'Failed move: ' + a_error;
+                    document.getElementById("hideable_fields").style.visibility = "visible";
+                    window.clearTimeout(this.presetTimer);
+                    this.presetTimer = null;
+                });
+        }
+
+        on_load_preset_timer(a_preset_index) {
+            // Set a camera preset
+            this.presetTimer = null;
+
+            var request = {};
+            request['command'] = 'set-preset';
+            request['value'] = this.presets[a_preset_index].preset;
+            send_visca_request(request)
+                .then((response) => {
+                    console.log('Loaded preset ' + request['value']);
+                    a_preset_index = a_preset_index + 1;
+                    if (a_preset_index < this.presets.length) {
+                        document.getElementById("showResults").innerHTML = 'Loaded preset ' + request['value'];
+                        this.move_to_next_preset(a_preset_index);
+                    }
+                    else {
+                        document.getElementById("hideable_fields").style.visibility = "visible";
+                        document.getElementById("showResults").innerHTML = 'Finished loading presets'
+                    }
+                })
+                .catch((a_error) => {
+                    document.getElementById("hideable_fields").style.visibility = "visible";
+                    document.getElementById("showResults").innerHTML = 'Failed set preset: ' + a_error;
+                });
+        }
     }
 
-    // Load all presets from a file
-    // Button wraps the ugly (and now hidden) file-selection control
+    // Button handler: save all presets to a file
+    function do_save_presets() {
+        // Hide controls while we run
+        document.getElementById("hideable_fields").style.visibility = "hidden";
+
+        var snlp = new SaveAndLoadPresets(2000);
+        snlp.get_next_preset(0)
+    }
+
+    // Button handler: load all presets from a file
     function do_load_presets() {
         fileElem = document.getElementById('preset_file');
         if (fileElem) {
@@ -397,87 +314,561 @@
         }
     }
 
+    // Handler for wrapped and hidden file-selection control
     function uploadPresetFile(a_files) {
         const selectedFile = a_files[0];
         const reader = new FileReader();
         reader.onload = function(evt) {
-            presets = JSON.parse(evt.target.result);
             document.getElementById("hideable_fields").style.visibility = "hidden";
-            do_move_to_next_preset(0);
+
+            var snlp = new SaveAndLoadPresets(2000);
+            snlp.load(evt.target.result);
         };
         reader.readAsText(selectedFile);
     }
 
-    // Move to the position specified by presets[a_preset_index]
-    function do_move_to_next_preset(a_preset_index) {
-        request = {};
-        request['command'] = 'moveto';
-        request['pan']  = presets[a_preset_index].pan;
-        request['tilt'] = presets[a_preset_index].tilt;
-        request['zoom'] = presets[a_preset_index].zoom;
-        document.getElementById("showResults").innerHTML = 'Loading preset ' + presets[a_preset_index].preset;
-        send_visca_request(request)
-            .then((response) => {
-                console.log('Moved to preset[' + a_preset_index + ']');
-                // Wait for the camera to move before saving as preset
-                presetTimer = window.setTimeout(on_load_preset_timer, wait_for_preset, a_preset_index);
-            })
-            .catch((a_error) => {
-                document.getElementById("showResults").innerHTML = 'Failed move: ' + a_error;
-                document.getElementById("hideable_fields").style.visibility = "visible";
-                window.clearTimeout(presetTimer);
-                presetTimer = null;
+    //==========================================================================
+    // Up/down/left/right slew and jog
+    // Mostly for Aver AV520+ cameras without slew speed control.
+    class JogSlewPTZ {
+        constructor(jog_repeat_msec) {
+            this.request = {};
+            this.actionState = 'IDLE';
+            this.jog_repeat = jog_repeat_msec; // Jog repeats every jog_repeat msec while mouse held down
+            this.jogTimer = null;
+
+            this.connect_button('slew_up');
+            this.connect_button('slew_down');
+            this.connect_button('slew_left');
+            this.connect_button('slew_right');
+            this.connect_button('jog_up');
+            this.connect_button('jog_down');
+            this.connect_button('jog_left');
+            this.connect_button('jog_right');
+
+            this.connect_button('slew_in');
+            this.connect_button('slew_out');
+            this.connect_button('jog_in');
+            this.connect_button('jog_out');
+        }
+
+        connect_button(a_button_id) {
+            var c = document.getElementById(a_button_id);
+
+            c.addEventListener("pointerdown", (e) => {
+                this.pointer_down(e);
             });
+
+            c.addEventListener("pointerup", (e) => {
+                this.pointer_up(e);
+            });
+        }
+
+        pointer_down(e) {
+            this.request = {};
+            this.request['speed'] = document.getElementById("speed_val").value;
+            this.actionState = 'SLEW';
+            switch (e.currentTarget.id) {
+            case 'slew_up':
+                this.request['command'] = 'tilt';
+                this.request['value'] = 'up';
+                break;
+
+            case 'slew_down':
+                this.request['command']= 'tilt';
+                this.request['value'] = 'down';
+                break;
+
+            case 'slew_left':
+                this.request['command'] = 'pan';
+                this.request['value'] = 'left';
+                break;
+
+            case 'slew_right':
+                this.request['command'] = 'pan';
+                this.request['value'] = 'right';
+                break;
+
+            case 'slew_in':
+                this.request['command'] = 'zoom';
+                this.request['value'] = 'in';
+                break;
+
+            case 'slew_out':
+                this.request['command'] = 'zoom';
+                this.request['value'] = 'out';
+                break;
+
+            case 'jog_up':
+                this.request['command'] = 'tilt';
+                this.request['value'] = '1';
+                this.actionState = 'JOG';
+                break;
+
+            case 'jog_down':
+                this.request['command'] = 'tilt';
+                this.request['value'] = '-1';
+                this.actionState = 'JOG';
+                break;
+
+            case 'jog_left':
+                this.request['command'] = 'pan';
+                this.request['value'] = '1';
+                this.actionState = 'JOG';
+                break;
+
+            case 'jog_right':
+                this.request['command'] = 'pan';
+                this.request['value'] = '-1';
+                this.actionState = 'JOG';
+                break;
+
+            case 'jog_in':
+                this.request['command'] = 'zoom';
+                this.request['value'] = '1';
+                this.actionState = 'JOG';
+                break;
+
+            case 'jog_out':
+                this.request['command'] = 'zoom';
+                this.request['value'] = '-1';
+                this.actionState = 'JOG';
+                break;
+
+            default:
+                var str = "Error: unexpected control ID " + e.currentTarget.id;
+                document.getElementById("showResults").innerHTML = str;
+                console.log( str );
+                return;
+            }
+
+            e.currentTarget.setPointerCapture(e.pointerId);
+            document.getElementById("showResults").innerHTML = '';
+            if (this.actionState == 'JOG') {
+                // Jog: send command, start timer to repeat jog
+                send_visca_request(this.request)
+                    .then((response) => {
+                        if (this.actionState == 'JOG') {
+                            // If button still active, start a timer to repeat jog.
+                            // Normally the case, but a delay in the server may allow
+                            // button-up before we get here.
+                            console.log('jog success, start jog timer');
+                            this.jogTimer = window.setTimeout(this.on_timer.bind(this), this.jog_repeat);
+                        }
+                    })
+                    .catch((a_error) => {
+                        document.getElementById("showResults").innerHTML = 'Failed mousedown: ' + a_error;
+                    });
+            }
+            else {
+                // slew: send start command
+                send_visca_request(this.request)
+                    .then((response) => {
+                        console.log('mousedown slew success');
+                    })
+                    .catch((a_error) => {
+                        document.getElementById("showResults").innerHTML = 'Failed mousedown slew: ' + a_error;
+                    });
+            }
+        }
+
+        pointer_up(e) {
+            e.currentTarget.releasePointerCapture(e.pointerId);
+
+            if (this.actionState == 'JOG') {
+                this.actionState = 'IDLE';
+                console.log('mouseup stopping jog timer');
+                window.clearTimeout(this.jogTimer);
+                this.jogTimer = null;
+            }
+            else if (this.actionState == 'SLEW') {
+                this.request['value'] = 'stop';
+                send_visca_request(this.request)
+                    .then((response) => {
+                        console.log('mouseup stopped slew');
+                    })
+                    .catch((a_error) => {
+                        document.getElementById("showResults").innerHTML = 'Failed mouseup: ' + a_error;
+                    })
+                    .finally(() => {
+                        this.actionState = 'IDLE';
+                    });
+            }
+        }
+
+        on_timer() {
+            if (this.actionState == 'JOG') {
+                console.log('timer: repeat jog');
+                send_visca_request(this.request)
+                    .then((response) => {
+                        console.log('jog timer success. Restarting timer');
+                        this.jogTimer = window.setTimeout(this.on_timer.bind(this), this.jog_repeat);
+                    })
+                    .catch((a_error) => {
+                        document.getElementById("showResults").innerHTML = 'Failed mouse timer: ' + a_error;
+                    });
+            }
+        }
     }
 
-    function on_load_preset_timer(a_preset_index) {
-        // Set a camera preset
-        presetTimer = null;
-        request = {};
-        request['command'] = 'set-preset';
-        request['value'] = presets[a_preset_index].preset;
-        send_visca_request(request)
-            .then((response) => {
-                console.log('Loaded preset ' + request['value']);
-                a_preset_index = a_preset_index + 1;
-                if (a_preset_index < presets.length) {
-                    document.getElementById("showResults").innerHTML = 'Loaded preset ' + request['value'];
-                    do_move_to_next_preset(a_preset_index);
-                }
-                else {
-                    document.getElementById("hideable_fields").style.visibility = "visible";
-                    document.getElementById("showResults").innerHTML = 'Finished loading presets'
-                }
-            })
-            .catch((a_error) => {
-                document.getElementById("hideable_fields").style.visibility = "visible";
-                document.getElementById("showResults").innerHTML = 'Failed set preset: ' + a_error;
-            });
+    // Called at page load to connect PTZ jogger/slew
+    var jogSlewPTZ = null;
+    function connect_buttons() {
+        jogSlewPTZ = new JogSlewPTZ(250);
     }
+
+    //==========================================================================
+    // Joystick pan/tilt: velocity set by distance from axis
+    class JoystickPTZ {
+        constructor(a_canvas_id) {
+            this.canvas_id = a_canvas_id;
+            this.pan_max = 0x18;    // Max in Sony definition; max for Vaddio HD-20
+            this.tilt_max = 0x14;   // Max for Vaddio HD-20; Sony max is 0x18
+            this.dead_limit = 5;    // deadband half-width
+
+            // Requested values set by mouse down, mouse move
+            this.active = false;
+            this.desired_d_pan = 'stop';
+            this.desired_v_pan = 0;
+            this.desired_d_tilt = 'stop';
+            this.desired_v_tilt = 0;
+
+            // Set by communications
+            this.in_progress = false;
+            this.last_d_pan = 'stop';
+            this.last_v_pan = 0;
+            this.last_d_tilt = 'stop';
+            this.last_v_tilt = 0;
+
+            this.connect();
+        }
+
+        connect() {
+            var c = document.getElementById(this.canvas_id)
+
+            c.addEventListener("pointerdown", (e) => {
+                // Attend only to main mouse button
+                if (e.button === 0) {
+                    c.setPointerCapture(e.pointerId);
+                    this.in_progress = false;
+                    this.last_d_pan = 'stop';
+                    this.last_v_pan = 0;
+                    this.last_d_tilt = 'stop';
+                    this.last_v_tilt = 0;
+
+                    this.active = true;
+                    this.do_joy_action(e);
+                }
+            });
+
+            c.addEventListener("pointermove", (e) => {
+                if (this.active) {
+                    this.do_joy_action(e);
+                }
+            });
+
+            c.addEventListener("pointerup", (e) => {
+                c.releasePointerCapture(e.pointerId);
+                if (this.active) {
+                    this.active = false;
+                    console.log('Pointerup: stop');
+
+                    var ctx = c.getContext("2d");
+                    ctx.clearRect(0, 0, c.width, c.height);
+
+                    this.desired_d_pan = 'stop';
+                    this.desired_v_pan = 0;
+                    this.desired_d_tilt = 'stop';
+                    this.desired_v_tilt = 0;
+                    // Perform the action when we can
+                    this.do_joy_comm();
+                }
+            });
+        }
+
+        // Convert a mouse position to desired pan and tilt directions and velocities
+        do_joy_action(e) {
+            var c = document.getElementById(this.canvas_id);
+            var half_width = c.width/2;
+            var half_height = c.height/2;
+            let x = Math.min(e.offsetX, c.width) - half_width;
+            let y = half_height - Math.min(e.offsetY, c.height);
+
+            // Draw a line from center to mouse
+            var ctx = c.getContext("2d");
+            ctx.clearRect(0, 0, c.width, c.height);
+            ctx.beginPath();
+            ctx.moveTo(half_width, half_height);
+            ctx.lineTo(e.offsetX, e.offsetY);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(e.offsetX, e.offsetY, this.dead_limit/2, 0, 2*Math.PI);
+            ctx.fill();
+
+            // Convert mouse position to pan and tilt velocities
+            this.desired_d_pan = 'stop';
+            this.desired_v_pan = 0;
+            if (x > this.dead_limit) {
+                this.desired_d_pan = 'right';
+                this.desired_v_pan = (x - this.dead_limit)/(half_width - this.dead_limit);
+            }
+            else if (x < -this.dead_limit) {
+                this.desired_d_pan = 'left';
+                this.desired_v_pan = -(x + this.dead_limit)/(half_width - this.dead_limit);
+            }
+            // Square the 0 to 1 velocity value to give finer slow-speed resolution
+            this.desired_v_pan = (this.desired_v_pan < 1.0)
+                    ? Math.round(this.desired_v_pan*this.desired_v_pan*this.pan_max)
+                    : this.pan_max;
+
+            this.desired_d_tilt = 'stop';
+            this.desired_v_tilt = 0;
+            if (y > this.dead_limit) {
+                this.desired_d_tilt = 'up';
+                this.desired_v_tilt = (y - this.dead_limit)/(half_height - this.dead_limit);
+            }
+            else if (y < -this.dead_limit) {
+                this.desired_d_tilt = 'down';
+                this.desired_v_tilt = -(y + this.dead_limit)/(half_height - this.dead_limit);
+            }
+            // Square the -1 to +1 value to give finer slow-speed resolution
+            this.desired_v_tilt = (this.desired_v_tilt < 1.0)
+                    ? Math.round(this.desired_v_tilt*this.desired_v_tilt*this.tilt_max)
+                    : this.tilt_max;
+
+            var text = 'Desired do_joy_action ' + this.desired_d_pan + '(' + this.desired_v_pan + ') ' +
+                           this.desired_d_tilt + '(' + this.desired_v_tilt + ')';
+            console.log(text);
+
+            // See if we can start the action
+            this.do_joy_comm();
+        }
+
+        // If communications isn't busy, and a change has been requested, tell the
+        // server to move the camera
+        do_joy_comm() {
+            if ((!this.in_progress) &&
+               ((this.desired_v_pan != this.last_v_pan) || (this.desired_v_tilt != this.last_v_tilt) ||
+                (this.desired_d_pan != this.last_d_pan) || (this.desired_d_tilt != this.last_d_tilt)))
+            {
+                // Able to make a change, and change has been requested
+                this.in_progress = true;
+                this.last_d_pan = this.desired_d_pan;
+                this.last_v_pan = this.desired_v_pan;
+                this.last_d_tilt = this.desired_d_tilt;
+                this.last_v_tilt = this.desired_v_tilt;
+
+                var text = 'do_joy_comm ' + this.desired_d_pan + '(' + this.desired_v_pan + ') ' +
+                            this.desired_d_tilt + '(' + this.desired_v_tilt + ')';
+                console.log(text);
+
+                var request = {};
+                request['command'] = 'slew';
+                request['pan-value'] = this.desired_d_pan;
+                request['pan-speed'] = this.desired_v_pan;
+                request['tilt-value'] = this.desired_d_tilt;
+                request['tilt-speed'] = this.desired_v_tilt;
+                send_visca_request(request)
+                    .then((response) => {
+                        // No longer busy. Check to see if anything has changed.
+                        this.in_progress = false;
+                        this.do_joy_comm();
+                    })
+                    .catch((a_error) => {
+                        document.getElementById("showResults").innerHTML = 'Failed joystick slew: ' + a_error;
+                        // TODO: try to send stop? release capture? Mark idle?
+                        console.log('ERROR: joystick slew failed');
+                        c = document.getElementById(this.canvas_id);
+                        var ctx = c.getContext("2d");
+                        ctx.clearRect(0, 0, c.width, c.height);
+                        c.releasePointerCapture(e.pointerId);
+                        this.in_progress = false;
+                        this.active = false;
+                    })
+            }
+        }
+    }
+
+    //==========================================================================
+    // Joystick zoom: velocity set by distance from axis
+    class JoystickZoom {
+        constructor(a_canvas_id) {
+            this.canvas_id  = a_canvas_id;
+            this.zoom_max   = 7;    // Max in Sony definition; max for Vaddio HD-20
+            this.dead_limit = 10;   // deadband half-width
+
+            // Requested values set by mouse down, mouse move
+            this.active = false;
+            this.desired_d_zoom = 'stop';
+            this.desired_v_zoom = 0;
+
+            // Set by communications
+            this.in_progress = false;
+            this.last_d_zoom = 'stop';
+            this.last_v_zoom = 0;
+
+            this.connect();
+        }
+
+        connect() {
+            var c = document.getElementById(this.canvas_id)
+
+            c.addEventListener("pointerdown", (e) => {
+                // Attend only to main mouse button
+                if (e.button === 0) {
+                    c.setPointerCapture(e.pointerId);
+                    this.in_progress = false;
+                    this.last_d_zoom = 'stop';
+                    this.last_v_zoom = 0;
+
+                    this.active = true;
+                    this.do_joy_action(e);
+                }
+            });
+
+            c.addEventListener("pointermove", (e) => {
+                if (this.active) {
+                    this.do_joy_action(e);
+                }
+            });
+
+            c.addEventListener("pointerup", (e) => {
+                c.releasePointerCapture(e.pointerId);
+                if (this.active) {
+                    this.active = false;
+                    console.log('Pointerup: stop');
+
+                    var ctx = c.getContext("2d");
+                    ctx.clearRect(0, 0, c.width, c.height);
+
+                    this.desired_d_zoom = 'stop';
+                    this.desired_v_zoom = 0;
+                    // Perform the action when we can
+                    this.do_joy_comm();
+                }
+            });
+        }
+
+        // Convert a mouse position to desired zoom direction and velocity
+        do_joy_action(e) {
+            var c = document.getElementById(this.canvas_id);
+            var half_width  = c.width/2;
+            var half_height = c.height/2;
+            let x = Math.min(e.offsetX, c.width) - half_width;
+            let y = half_height - Math.min(e.offsetY, c.height);
+
+            // Draw a line from center to mouse
+            var ctx = c.getContext("2d");
+            ctx.clearRect(0, 0, c.width, c.height);
+            ctx.beginPath();
+            ctx.moveTo(half_width, half_height);
+            ctx.lineTo(half_width, e.offsetY);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(half_width, e.offsetY, this.dead_limit/4, 0, 2*Math.PI);
+            ctx.fill();
+
+            // Convert mouse position to zoom velocity
+            this.desired_d_zoom = 'stop';
+            this.desired_v_zoom = 0;
+            if (y > this.dead_limit) {
+                this.desired_d_zoom = 'in';
+                this.desired_v_zoom = (y - this.dead_limit)/(half_height - this.dead_limit);
+            }
+            else if (y < -this.dead_limit) {
+                this.desired_d_zoom = 'out';
+                this.desired_v_zoom = -(y + this.dead_limit)/(half_height - this.dead_limit);
+            }
+            this.desired_v_zoom = (this.desired_v_zoom < 1.0)
+                    ? Math.round(this.desired_v_zoom*this.zoom_max)
+                    : this.zoom_max;
+
+            var text = 'Desired do_joy_action ' + this.desired_d_zoom + '(' + this.desired_v_zoom + ')';
+            console.log(text);
+
+            // See if we can start the action
+            this.do_joy_comm();
+        }
+
+        // If communications isn't busy, and a change has been requested, tell the
+        // server to move the camera
+        do_joy_comm() {
+            if ((!this.in_progress) &&
+               ((this.desired_v_zoom != this.last_v_zoom) || (this.desired_d_zoom != this.last_d_zoom)))
+            {
+                // Able to make a change, and change has been requested
+                this.in_progress = true;
+                this.last_d_zoom = this.desired_d_zoom;
+                this.last_v_zoom = this.desired_v_zoom;
+
+                var text = 'do_joy_comm ' + this.desired_d_zoom + '(' + this.desired_v_zoom + ')';
+                console.log(text);
+
+                var request = {};
+                request['command'] = 'zoom';
+                request['value'] = this.desired_d_zoom;
+                request['speed'] = this.desired_v_zoom;
+
+                send_visca_request(request)
+                    .then((response) => {
+                        // No longer busy. Check to see if anything has changed.
+                        this.in_progress = false;
+                        this.do_joy_comm();
+                    })
+                    .catch((a_error) => {
+                        document.getElementById("showResults").innerHTML = 'Failed joystick slew: ' + a_error;
+                        // TODO: try to send stop? release capture? Mark idle?
+                        console.log('ERROR: joystick slew failed');
+                        c = document.getElementById(this.canvas_id);
+                        var ctx = c.getContext("2d");
+                        ctx.clearRect(0, 0, c.width, c.height);
+                        c.releasePointerCapture(e.pointerId);
+                        this.in_progress = false;
+                        this.active = false;
+                    })
+            }
+        }
+    }
+
+    // Called at page load to connect PTZ joystick
+    var joystickPTZ = null;
+    var joystickZoom = null;
+    function connect_joystick() {
+        joystickPTZ = new JoystickPTZ('joystick');
+        joystickZoom = new JoystickZoom('zoomstick');
+    }
+
+    //==========================================================================
     </script>
+
+    <style>
+        .arrow {
+            color: white;
+        }
+        .arrow:hover {
+            color: #A0A0A0;
+        }
+        .arrow:active {
+            color: #707070;
+        }
+
+        .cls-1 {
+            fill:none;
+            stroke:#FFFFFF;
+            stroke-width:4px;
+        }
+        .cls-2 {
+            fill:none;
+            stroke:#FFFFFF;
+            stroke-width:1.5px;
+        }
+    </style>
+
 </head>
 
-<style>
-    .arrow {
-        color: white;
-    }
-    .arrow:hover {
-        color: #A0A0A0;
-    }
-    .arrow:active {
-        color: #707070;
-    }
-
-    .cls-1 {
-        fill:none;
-        stroke:#FFFFFF;
-        stroke-linecap:round;
-        stroke-linejoin:round;
-        stroke-width:4px;
-    }
-</style>
-
-<body>
+<body onload="connect_joystick(); connect_buttons();">
 
 <div id="showResults">
     results
@@ -487,6 +878,8 @@
     <br><br>
     <label for="camera">Camera address:</label>
     <input id="camera" type="number" value="1">
+    &nbsp;&nbsp;<label for="speed">Speed:</label>
+    <input id="speed_val" type="number" value="0">
     &nbsp;&nbsp;<button onclick="do_read_version_info()">Read Camera Info</button>
     &nbsp;&nbsp;<button onclick="do_read_position()">Read Position</button>
     <br><br>
@@ -513,30 +906,18 @@
     <button onclick="do_send_raw()">Send raw bytes</button>
 
 <!----------------- Pan/Tilt/Zoom buttons ----------------------->
-<div style="position:relative; top:100px; left:100px; width:200px; height:100px; background:#3A393A;">
-<div style="position:absolute; top:0px; left:38px; width:22px; height:19px;">
-    <svg id="slew_up" class="arrow" width="22" height="19"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
-        <path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/>
-    </svg>
+<div style="position:absolute; top:300px; left:100px; width:200px; height:100px; background:#3A393A;">
+<div id="slew_up" class="arrow" style="position:absolute; top:0px; left:38px;">
+    <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
 </div>
-<div style="position:absolute; top:19px; left:38px; width:22px; height:19px;">
-    <svg id="jog_up" class="arrow" width="22" height="19"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
-        <path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/>
-    </svg>
+<div id="jog_up" class="arrow" style="position:absolute; top:19px; left:38px;">
+    <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
 </div>
-<div style="position:absolute; top:38px; left:0px; width:19px; height:22px;">
-    <svg id="slew_left" class="arrow" width="19" height="22"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
-        <path d="M 19 22  L 0 11  L 19 0  Z" fill="currentColor"/>
-    </svg>
+<div id="slew_left" class="arrow" style="position:absolute; top:38px; left:0px;">
+    <svg style="width:19px; height:22px;"><path d="M 19 22  L 0 11  L 19 0  Z" fill="currentColor"/></svg>
 </div>
-<div style="position:absolute; top:38px; left:19px; width:19px; height:19px;">
-    <svg id="jog_left" class="arrow" width="19" height="22"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
-        <path d="M 19 22  L 0 11  L 19 0  Z" fill="currentColor"/>
-    </svg>
+<div id="jog_left" class="arrow" style="position:absolute; top:38px; left:19px;">
+    <svg style="width:19px; height:22px;"><path d="M 19 22  L 0 11  L 19 0  Z" fill="currentColor"/></svg>
 </div>
 <div style="position:absolute; top:39px; left:39px; width:20px; height:20px;">
     <!-- Pan/tilt (crossed double-headed arrows) image -->
@@ -549,43 +930,25 @@
        <polyline points="27.15 51.5 27.15 32.06 27.15 20.94 27.15 1.5"/>
     </svg>
 </div>
-<div style="position:absolute; top:38px; left:60px; width:19px; height:22px;">
-    <svg id="jog_right" class="arrow" width="19" height="22"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
-        <path d="M 0 0  L 19 11  L 0 22  Z" fill="currentColor"/>
-    </svg>
+<div id="jog_right" class="arrow" style="position:absolute; top:38px; left:60px;">
+    <svg style="width:19px; height:22px;"><path d="M 0 0  L 19 11  L 0 22  Z" fill="currentColor"/></svg>
 </div>
-<div style="position:absolute; top:38px; left:79px; width:19px; height:22px;">
-    <svg id="slew_right" class="arrow" width="19" height="22"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
-        <path d="M 0 0  L 19 11  L 0 22  Z" fill="currentColor"/>
-    </svg>
+<div id="slew_right" class="arrow" style="position:absolute; top:38px; left:79px;">
+    <svg style="width:19px; height:22px;"><path d="M 0 0  L 19 11  L 0 22  Z" fill="currentColor"/></svg>
 </div>
-<div style="position:absolute; top:60px; left:38px; width:22px; height:19px;">
-    <svg id="jog_down" class="arrow" width="22" height="19"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
-        <path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/>
-    </svg>
+<div id="jog_down" class="arrow" style="position:absolute; top:60px; left:38px;">
+    <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
 </div>
-<div style="position:absolute; top:79px; left:38px; width:22px; height:19px;">
-    <svg id="slew_down" class="arrow" width="22" height="19"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
-        <path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/>
-    </svg>
+<div id="slew_down" class="arrow" style="position:absolute; top:79px; left:38px;">
+    <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
 </div>
 
 <!----------------- Zoom buttons ----------------------->
-<div style="position:absolute; top:0px; left:138px; width:22px; height:19px;">
-    <svg id="slew_in" class="arrow" width="22" height="19"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
-        <path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/>
-    </svg>
+<div id="slew_in" class="arrow" style="position:absolute; top:0px; left:138px;">
+    <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
 </div>
-<div style="position:absolute; top:19px; left:138px; width:22px; height:19px;">
-    <svg id="jog_in" class="arrow" width="22" height="19"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
-        <path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/>
-    </svg>
+<div id="jog_in" class="arrow" style="position:absolute; top:19px; left:138px;">
+    <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
 </div>
 <div style="position:absolute; top:39px; left:138px; width:20px; height:20px;">
     <!-- Zoom (magnifying glass) image -->
@@ -594,19 +957,44 @@
         <line x1="70" y1="70" x2="90" y2="90" stroke-width="12" />
     </svg>
 </div>
-<div style="position:absolute; top:60px; left:138px; width:22px; height:19px;">
-    <svg id="jog_out" class="arrow" width="22" height="19"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
-        <path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/>
+<div id="jog_out" class="arrow" style="position:absolute; top:60px; left:138px;">
+    <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
+</div>
+<div id="slew_out" class="arrow" style="position:absolute; top:79px; left:138px;">
+    <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
+</div>
+</div>
+
+<!----------------- Pan/tilt Joystick ----------------------->
+<div style="position:absolute; top:300px; left:350px; width:100px; height:100px; background:#808080;">
+    <svg class="cls-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+       <line x1="0"  y1="50" x2="39"  y2="50" stroke-width="10" stroke="#C0C0C0"/>
+       <line x1="61" y1="50" x2="100" y2="50" stroke-width="10" stroke="#C0C0C0"/>
+       <line x1="50" y1="0"  x2="50" y2="39" stroke-width="10" stroke="#C0C0C0"/>
+       <line x1="50" y1="61" x2="50" y2="100" stroke-width="10" stroke="#C0C0C0"/>
+
+       <polyline points="44.603  46.974  40.555  48.603  42.185  52.655"/>
+       <polyline points="55.507  46.974  59.555  48.603  57.925  52.655"/>
+       <path     d="M40.555 48.762 q9.259 4.207 18.518 0"/>
+       <polyline points="53.1407 55.988  50.0555 59.074  46.970  55.988"/>
+       <polyline points="46.970  43.640  50.0555 40.555  53.140  43.640"/>
+       <polyline points="50.055  59.074  50.0555 51.874  50.0555 47.755  50.0555 40.555"/>
+    </svg>
+
+</div>
+<canvas id="joystick" style="position:absolute; top:300px; left:350px;" width="100" height="100">
+Your browser does not support the HTML5 canvas tag.</canvas>
+
+<!----------------- Zoom Joystick ----------------------->
+<div style="position:absolute; top:300px; left:460px; width:20px; height:100px; background:#808080;">
+    <svg class="cls-1" style="top:50px" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 400">
+        <circle cx="45" cy="247" r="35" fill="transparent" stroke-width="8" />
+        <line x1="70" y1="270" x2="90" y2="290" stroke-width="12" />
     </svg>
 </div>
-<div style="position:absolute; top:79px; left:138px; width:22px; height:19px;">
-    <svg id="slew_out" class="arrow" width="22" height="19"
-        onmousedown="on_mousedown(this);" onmouseup="on_mouseup(this);" onmouseleave="on_mouseleave(this);">
-        <path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/>
-    </svg>
-</div>
-</div>
+<canvas id="zoomstick" style="position:absolute; top:300px; left:460px;" width="20" height="100">
+Your browser does not support the HTML5 canvas tag.</canvas>
+
 </div>
 
 </body>
