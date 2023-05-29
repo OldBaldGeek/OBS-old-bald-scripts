@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<head>
+<title>Camera Control for Zoom</title>
+<meta charset="utf-8">
+</head>
+
+<body onload="loaded()">
+    <link rel="stylesheet" type="text/css" href="cabrini-dock2.css">
+    <div class="grid-container">
+        <div class="grid-child">
+            <div>
+                <span class="Title"    id="Title0">Camera 1</span>
+                <span class="ProgPrev" id="Preview0">Preview</span>
+                <span class="ProgPrev" id="Program0">Program</span>
+            </div>
+
+            <div class="PanTiltZoomPanel">
+                <!----------------- Pan and tilt buttons ----------------------->
+                <div id="slew_up0" class="arrow" style="position:absolute; top:0px; left:38px;">
+                    <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
+                </div>
+                <div id="jog_up0" class="arrow" style="position:absolute; top:19px; left:38px;">
+                    <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
+                </div>
+                <div id="slew_left0" class="arrow" style="position:absolute; top:38px; left:0px;">
+                    <svg style="width:19px; height:22px;"><path d="M 19 22  L 0 11  L 19 0  Z" fill="currentColor"/></svg>
+                </div>
+                <div id="jog_left0" class="arrow" style="position:absolute; top:38px; left:19px;">
+                    <svg style="width:19px; height:22px;"><path d="M 19 22  L 0 11  L 19 0  Z" fill="currentColor"/></svg>
+                </div>
+                <div style="position:absolute; top:39px; left:39px; width:20px; height:20px;">
+                    <!-- Pan/tilt (crossed double-headed arrows) image -->
+                    <svg class="cls-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 54.3 53">
+                       <polyline points="12.43 18.83 1.5 23.23 5.9 34.17"/>
+                       <polyline points="41.87 18.83 52.8 23.23 48.4 34.17"/>
+                       <path     d="M1.5,23.66 q25,11.36,50,0"/>
+                       <polyline points="35.48 43.17 27.15 51.5 18.82 43.17"/>
+                       <polyline points="18.82 9.83 27.15 1.5 35.48 9.83"/>
+                       <polyline points="27.15 51.5 27.15 32.06 27.15 20.94 27.15 1.5"/>
+                    </svg>
+                </div>
+                <div id="jog_right0" class="arrow" style="position:absolute; top:38px; left:60px;">
+                    <svg style="width:19px; height:22px;"><path d="M 0 0  L 19 11  L 0 22  Z" fill="currentColor"/></svg>
+                </div>
+                <div id="slew_right0" class="arrow" style="position:absolute; top:38px; left:79px;">
+                    <svg style="width:19px; height:22px;"><path d="M 0 0  L 19 11  L 0 22  Z" fill="currentColor"/></svg>
+                </div>
+                <div id="jog_down0" class="arrow" style="position:absolute; top:60px; left:38px;">
+                    <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
+                </div>
+                <div id="slew_down0" class="arrow" style="position:absolute; top:79px; left:38px;">
+                    <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
+                </div>
+
+                <!----------------- Zoom buttons ----------------------->
+                <div id="slew_in0" class="arrow" style="position:absolute; top:0px; left:110px;">
+                    <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
+                </div>
+                <div id="jog_in0" class="arrow" style="position:absolute; top:19px; left:110px;">
+                    <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
+                </div>
+                <div style="position:absolute; top:39px; left:110px; width:20px; height:20px;">
+                    <!-- Zoom (magnifying glass) image -->
+                    <svg class="cls-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+                        <circle cx="45" cy="47" r="35" fill="transparent" stroke-width="8" />
+                        <line x1="70" y1="70" x2="90" y2="90" stroke-width="12" />
+                    </svg>
+                </div>
+                <div id="jog_out0" class="arrow" style="position:absolute; top:60px; left:110px;">
+                    <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
+                </div>
+                <div id="slew_out0" class="arrow" style="position:absolute; top:79px; left:110px;">
+                    <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
+                </div>
+
+                <div class="PresetButtons">
+                    <input type="checkbox" id="Edit0" onclick="do_edit(0, this);" />
+                    <label for="Edit0">Edit</label>
+                    <div id="Hide0">
+                        <button class="PresetButton" onclick="do_show_preset(0)">SHOW</button>
+                        <button class="PresetButton" onclick="do_set_preset(0)">SET</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="PresetArea">
+                <div class="Status" id='Status0'>Presets</div>
+                <div>
+                    <select class="Presets" id="Presets0" size="16" onchange="do_select(0, this)"></select>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid-child">
+            <div>
+                <span class="Title"    id="Title1">Camera 2</span>
+                <span class="ProgPrev" id="Preview1">Preview</span>
+                <span class="ProgPrev" id="Program1">Program</span>
+            </div>
+            <div class="PanTiltZoomPanel">
+                <!----------------- Pan and tilt buttons ----------------------->
+                <div id="slew_up1" class="arrow" style="position:absolute; top:0px; left:38px;">
+                    <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
+                </div>
+                <div id="jog_up1" class="arrow" style="position:absolute; top:19px; left:38px;">
+                    <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
+                </div>
+                <div id="slew_left1" class="arrow" style="position:absolute; top:38px; left:0px;">
+                    <svg style="width:19px; height:22px;"><path d="M 19 22  L 0 11  L 19 0  Z" fill="currentColor"/></svg>
+                </div>
+                <div id="jog_left1" class="arrow" style="position:absolute; top:38px; left:19px;">
+                    <svg style="width:19px; height:22px;"><path d="M 19 22  L 0 11  L 19 0  Z" fill="currentColor"/></svg>
+                </div>
+                <div style="position:absolute; top:39px; left:39px; width:20px; height:20px;">
+                    <!-- Pan/tilt (crossed double-headed arrows) image -->
+                    <svg class="cls-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 54.3 53">
+                       <polyline points="12.43 18.83 1.5 23.23 5.9 34.17"/>
+                       <polyline points="41.87 18.83 52.8 23.23 48.4 34.17"/>
+                       <path     d="M1.5,23.66 q25,11.36,50,0"/>
+                       <polyline points="35.48 43.17 27.15 51.5 18.82 43.17"/>
+                       <polyline points="18.82 9.83 27.15 1.5 35.48 9.83"/>
+                       <polyline points="27.15 51.5 27.15 32.06 27.15 20.94 27.15 1.5"/>
+                    </svg>
+                </div>
+                <div id="jog_right1" class="arrow" style="position:absolute; top:38px; left:60px;">
+                    <svg style="width:19px; height:22px;"><path d="M 0 0  L 19 11  L 0 22  Z" fill="currentColor"/></svg>
+                </div>
+                <div id="slew_right1" class="arrow" style="position:absolute; top:38px; left:79px;">
+                    <svg style="width:19px; height:22px;"><path d="M 0 0  L 19 11  L 0 22  Z" fill="currentColor"/></svg>
+                </div>
+                <div id="jog_down1" class="arrow" style="position:absolute; top:60px; left:38px;">
+                    <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
+                </div>
+                <div id="slew_down1" class="arrow" style="position:absolute; top:79px; left:38px;">
+                    <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
+                </div>
+
+                <!----------------- Zoom buttons ----------------------->
+                <div id="slew_in1" class="arrow" style="position:absolute; top:0px; left:110px;">
+                    <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
+                </div>
+                <div id="jog_in1" class="arrow" style="position:absolute; top:19px; left:110px;">
+                    <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
+                </div>
+                <div style="position:absolute; top:39px; left:110px; width:20px; height:20px;">
+                    <!-- Zoom (magnifying glass) image -->
+                    <svg class="cls-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+                        <circle cx="45" cy="47" r="35" fill="transparent" stroke-width="8" />
+                        <line x1="70" y1="70" x2="90" y2="90" stroke-width="12" />
+                    </svg>
+                </div>
+                <div id="jog_out1" class="arrow" style="position:absolute; top:60px; left:110px;">
+                    <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
+                </div>
+                <div id="slew_out1" class="arrow" style="position:absolute; top:79px; left:110px;">
+                    <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
+                </div>
+
+                <div class="PresetButtons">
+                    <input type="checkbox" id="Edit1" onclick="do_edit(1, this);" />
+                    <label for="Edit1">Edit</label>
+                    <div id="Hide1">
+                        <button class="PresetButton" onclick="do_show_preset(1)">SHOW</button>
+                        <button class="PresetButton" onclick="do_set_preset(1)">SET</button>
+                        <button class="PresetButton" onclick="do_save_load(1)">Save/load</button>
+                    </div>
+                </div>
+            </div>
+            <div class="PresetArea">
+                <div class="Status" id='Status1'>Presets</div>
+                <div>
+                    <select class="Presets" id="Presets1" size="16" onchange="do_select(1, this)"></select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Dialog for preset save/load -->
+    <div id="saveLoadModal" class="save-load-background">
+      <div class="save-load-content">
+        <p id="text-here">Save presets to, or load presets from, a file</p>
+        <button id="savePre" class="SlideButton" onclick="do_save_load('save');">Save...</button>
+        <button id="loadPre" class="SlideButton" onclick="do_save_load('load');">Load...</button>
+        <button class="SlideButton" onclick="do_save_load('cancel');">Cancel/Close</button>
+        <input type="file" id="preset_file" style="display:none" accept=".json,.txt" onchange="uploadPresetFile(this.files);">
+      </div>
+    </div>
+
+    <script type="text/javascript" src="camera-data.js"></script>
+    <script type="text/javascript" src="cabrini-dock2.js"></script>
+    <script type="text/javascript" src="camera-controller.js"></script>
+</body>
+</html>
