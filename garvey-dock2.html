@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<head>
+<title>Cabrini Swiss Army Dock</title>
+<meta charset="utf-8">
+</head>
+
+<body onload="loaded()">
+    <link rel="stylesheet" type="text/css" href="garvey-dock2.css">
+    <div class="grid-container">
+        <div class="grid-child">
+            <div>
+                <span class="Title"    id="Title0">Camera 1</span>
+                <span class="ProgPrev" id="Preview0">Preview</span>
+                <span class="ProgPrev" id="Program0">Program</span>
+            </div>
+
+            <div class="PanTiltZoomPanel">
+                <div style="position:absolute; top:0px; left:0px; width:100px; height:100px; background:#808080;">
+                    <svg class="cls-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+                       <line x1="0"  y1="50" x2="39"  y2="50" stroke-width="10" stroke="#C0C0C0"/>
+                       <line x1="61" y1="50" x2="100" y2="50" stroke-width="10" stroke="#C0C0C0"/>
+                       <line x1="50" y1="0"  x2="50" y2="39" stroke-width="10" stroke="#C0C0C0"/>
+                       <line x1="50" y1="61" x2="50" y2="100" stroke-width="10" stroke="#C0C0C0"/>
+
+                       <polyline points="44.603  46.974  40.555  48.603  42.185  52.655"/>
+                       <polyline points="55.507  46.974  59.555  48.603  57.925  52.655"/>
+                       <path     d="M40.555 48.762 q9.259 4.207 18.518 0"/>
+                       <polyline points="53.1407 55.988  50.0555 59.074  46.970  55.988"/>
+                       <polyline points="46.970  43.640  50.0555 40.555  53.140  43.640"/>
+                       <polyline points="50.055  59.074  50.0555 51.874  50.0555 47.755  50.0555 40.555"/>
+                    </svg>
+
+                </div>
+                <canvas id="pan_tilt_stick0" style="position:absolute; top:0px; left:0px;" width="100" height="100">
+                Your browser does not support the HTML5 canvas tag.</canvas>
+
+                <!----------------- Zoom Joystick ----------------------->
+                <div style="position:absolute; top:0px; left:110px; width:20px; height:100px; background:#808080;">
+                    <svg class="cls-1" style="top:50px" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 400">
+                        <circle cx="45" cy="247" r="35" fill="transparent" stroke-width="8" />
+                        <line x1="70" y1="270" x2="90" y2="290" stroke-width="12" />
+                    </svg>
+                </div>
+                <canvas id="zoom_stick0" style="position:absolute; top:0px; left:110px;" width="20" height="100">
+                Your browser does not support the HTML5 canvas tag.</canvas>
+
+                <div class="PresetButtons">
+                    <input type="checkbox" id="Edit0" onclick="do_edit(0, this);" />
+                    <label for="Edit0">Edit</label>
+                    <div id="Hide0">
+                        <button class="PresetButton" onclick="do_show_preset(0)">SHOW</button>
+                        <button class="PresetButton" onclick="do_set_preset(0)">SET</button>
+                        <button class="PresetButton" onclick="do_save_load(0)">Save/load</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="PresetArea">
+                <div class="Status" id='Status0'>Presets</div>
+                <div>
+                    <select class="Presets" id="Presets0" size="16" onchange="do_select(0, this)"></select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Dialog for preset save/load -->
+    <div id="saveLoadModal" class="save-load-background">
+      <div class="save-load-content">
+        <p id="text-here">Save presets to, or load presets from, a file</p>
+        <button id="savePre" class="SlideButton" onclick="do_save_load('save');">Save...</button>
+        <button id="loadPre" class="SlideButton" onclick="do_save_load('load');">Load...</button>
+        <button class="SlideButton" onclick="do_save_load('cancel');">Cancel/Close</button>
+        <input type="file" id="preset_file" style="display:none" accept=".json,.txt" onchange="uploadPresetFile(this.files);">
+      </div>
+    </div>
+
+    <script type="text/javascript" src="garvey-camera-data.js"></script>
+    <script type="text/javascript" src="camera-controller.js"></script>
+
+    <script type="text/javascript">
+        // Called when everything is ready
+        function loaded()
+        {
+            // Construct and connect camera controllers
+            start_camera();
+        }
+    </script>
+
+</body>
+</html>
