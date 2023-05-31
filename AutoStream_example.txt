@@ -2,49 +2,119 @@
 # Used as input to the OBS script AutoStream.lua to give simple automatic
 # control of OBS for streaming, recording etc.
 #
-# This example assumes a scene collection with
-#   Scenes:
-#   - "Opening View"        Camera view of the space, with title
-#   - "Main View"           Camera view of performance space
-#   - "Command View"        Shown in Preview to show script actions
+# This example streams a 9:00 AM service every Sunday.
 #
-#   Audio Sources:
-#   - "Room Mics"           Crowd mic, used for ambience
-#   - "Music Mics"          Performers mics
+# This example assumes a scene collection with
+#   Scenes named:
+#   - "Opening View"                Camera view of the space, with title
+#   - "Automatic Streamer View"     Camera view of performance space
+#   - "Automatic Streamer"          Shown in Preview to show script actions
+#
+#   Audio Sources named:
+#   - "Congregation"                Crowd mic, used for ambience
+#   - "Main Audio"                  Presider and music mics
 
-# Do the rest of this only on the specified date, else stop
-date August 14, 2022
+# Proceed only if we start with OBS profile "AUTOMATIC", else exit.
+# The profile to be used for the stream is set below.
+profile AUTOMATIC else exit
 
-# Define control_scene to allow an operator to pause automatic operation
+# Configuration items ----------------------------------------------------------
+show Configuration items
+
+# The date or day on which to stream.
+# If this is a full date in the form "February 22, 2023"
+# - If the current date matches, the script will continue.
+# - If the current date is after this, the script will exit.
+# - If the current date is before this, the script will wait until this date.
+#   So you could run OBS on Saturday evening in order to do an automated stream on
+#   Sunday morning - PRESUMING the PC doesn't go to sleep before then, so check the
+#   PC's power settings if you want to so this.
+# If this is a day of the week (Sunday, Monday...)
+# - If the current day matches, the script will continue.
+# - If the current day doesn't match, the script will exit.
+# If this is "ANY", the script will continue on any day.
+$event_date = Sunday
+
+# The time at which to start streaming, usually 5 or 10 minutes before
+# the actual start of the event, to give viewers a chance to verify the URL,
+# and see and hear the folks gathered in person.
+# A scene with a title card and count-down clock will usually be shown.
+$stream_start_time = 8:55 AM
+
+# The time at which the actual event should start. Scene changes at this time.
+$event_start_time = 9:00 AM
+
+# The time at which the stream should end.
+# Usually 90 minute after $event_start_time for a Sunday Mass,
+# perhaps 120 minutes after $event_start_time for a funeral with eulogies.
+# Better to go long than to cut off before the event is done.
+# An operator can always end the stream early.
+$stream_stop_time = 10:30 AM
+
+# The OBS profile to use. This specifies the streaming key to be used, which
+# MUST match the key used by the scheduled YouTube stream.
+# Usually "SUNDAY" for 9 AM Mass, and "SPECIAL" for funerals and other events.
+# Several other profiles/keys are available for Holy week etc.
+$stream_profile = SUNDAY
+# ------------------------------------------------------------------------------
+# Show the current profile and streaming key
+profile
+show_streamkey
+
+# Wait until cameras are awake before changing any scenes
+wait 4
+
+# Define the control_scene to allow an operator to pause automatic operation
 # and to show control_text (changes Preview to control_scene)
-control_scene Command View
-show Starting Automated Stream commands
+show STARTING AUTOMATED STREAMING ACTIONS
+control_scene Automatic Streamer
 
-# Select the profile with the correct streaming key
-profile Sunday
+# If on the date, continue
+# If before the date, wait for the date (with control_scene visible)
+# If after the date, goto cleanup
+date $event_date else cleanup
 
-# Show the streaming key, just in case
-streamkey
+# Show "Opening View" with a title and count-down clock.
+program Opening View
 
-# Set ambient audio levels: music mics down so they don't pick up musicians' banter
-audiolevel Room Mics    -6
-audiolevel Music Mics   -15
+# Set ambient mic to pick up crowd bustle,
+# music mics down so they don't pick up musicians' banter
+audiolevel Congregation  -6
+audiolevel Main Audio    -10
 
-show Wait until 5 minutes before show time, then start streaming
-time 8:55
+# Change profile to select the YouTube key for this stream.
+# Delay to let profile change before checking profile/streamkey and starting to stream.
+# "profile" command will error if profile doesn't change (or doesn't exist)
+set_profile $stream_profile
+wait 5
+profile $stream_profile
+show_streamkey
+
+show Waiting until it is time to start streaming, or until an operator takes over.
+# If the time is more than an hour after the specified time, goto cleanup
+time $stream_start_time else cleanup
 start_streaming
+show
+show STREAMING HAS STARTED. Waiting for the event start time.
+time $event_start_time
 
-show Wait until show time, then change to the main scene
-time 9:00
+# Switch to our main scene, prioritize ambo and music mics over congregation
+program Automatic Streamer View
+audiolevel Congregation -13
+audiolevel Main Audio   -4
 
-# Switch to our main scene, prioritize music mics over crowd
-program Main View
-audiolevel Room Mics    -10
-audiolevel Music Mics   -4
+show Waiting until it is time to stop streaming.
+show You can stop manually by clicking the "Stop Streaming" button in the "Controls" column.
+time $stream_stop_time
 
-show Wait 90 minutes, presuming that the event will be over by then, then stop streaming
-time 10:30
 stop_streaming
+show
+show STREAMING HAS ENDED. Ready for manual operation, or shutdown.
+stop
 
-# We are done
+# Jumped to from above if date or time don't match the specifications
+:cleanup
+show Ready for manual operation
+
+:exit
 stop
