@@ -44,10 +44,10 @@ function loaded()
     start_camera();
 
     // Start the Websocket interface
-//    window.addEventListener("load", connectWebsocket, false);
+    window.addEventListener("load", connectWebsocket, false);
 
     // Wait a bit to let OBS get ready before connecting
-//    intervalID = setTimeout(connectWebsocket, g_connectInterval);
+    intervalID = setTimeout(connectWebsocket, g_connectInterval);
 }
 
 //==============================================================================
