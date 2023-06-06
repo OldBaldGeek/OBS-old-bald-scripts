@@ -188,6 +188,39 @@ function uploadPresetFile(a_files) {
     reader.readAsText(selectedFile);
 }
 
+// Reset camera PTZ
+// (Works only for VISCA camera controller)
+function do_reset(a_camera) {
+    var cam = g_cam_controller[a_camera];
+    var request = {};
+    request['command'] = 'send_raw';
+    request['bytes-to-send'] = '81 01 06 05 FF';
+    request['reply-length'] = 0;
+    cam.send_visca_request(request)
+        .then((response) => {
+            console.log('Did reset');
+        })
+        .catch((a_error) => {
+            cam.show_result('Failed Reset: ' + a_error);
+        });
+}
+
+// Home camera PTZ
+function do_home(a_camera) {
+    var cam = g_cam_controller[a_camera];
+    var request = {};
+    request['command'] = 'send_raw';
+    request['bytes-to-send'] = '81 01 06 04 FF';
+    request['reply-length'] = 0;
+    cam.send_visca_request(request)
+        .then((response) => {
+            console.log('Did Home');
+        })
+        .catch((a_error) => {
+            cam.show_result('Failed Home: ' + a_error);
+        });
+}
+
 //==============================================================================
 // Video camera with PTZ and presets
 class CameraController {
