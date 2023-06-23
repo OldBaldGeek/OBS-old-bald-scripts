@@ -1135,7 +1135,7 @@ class SaveAndLoadPresets {
 
         var a = document.createElement("a");
         a.href = URL.createObjectURL(file);
-        a.download = this.visca_controller.name + '_camera_data.json';
+        a.download = this.visca_controller.name + '_camera_presets.json';
         a.click();
         this.finish("Finished saving presets");
     }
