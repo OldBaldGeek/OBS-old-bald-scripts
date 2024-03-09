@@ -39,6 +39,7 @@ Replacement for cabrini-dock, adding support for VISCA cameras. Uses camera-cont
 ## cabrini-dock.html, .js, .css (OBS browser dock)
 Browser dock for OBS containing PTZ controls for two Aver VC520+ cameras, and a preview of current and upcoming slides from SimpleSlides.lua.
 Uses button images from the images directory. Uses ljsocket.lua. Gets camera data from camera-data.js
+Replaced by cabrini-dock2.html.
 
 ## camera-control.html, -page2.html, .css, .js (OBS browser dock)
 Obsolete browser dock to do PTZ control for an Aver VC520+ camera.
@@ -59,6 +60,10 @@ Currently supports Aver VC520+ via PTZApp, and some serial VISCA cameras includi
 
 ## visca-server.py
 Simple web server to provide an XMLHttpRequest interface to RS-232 VISCA. Interface used by camera-controller.js
+
+## SlideNumber.py
+Given a set of files with names like "slide1, slide2, ... slide10, slide11", an alphabetical sort will give "slide1, slide10, slide11, slide2"
+This script normalizes the numeric tails on the filenames with leading zeros so that alphabetical sort follows numerical order.
 
 ## ReaperMarker.lua
 When recording, allows hotkeys to generate timestamps for import later as markers when editing the recorded audio in Reaper.
@@ -82,7 +87,7 @@ the appropriate location.
 Button images used by some of the browser docks listed above
 
 ## ljsocket.lua
-Used by Camera-buddy.lua. This file actually belongs to the obs-visca-control plugin found on the OBS website. It is a socket library used by Camera-buddy.lua to control PTZ cameras over IP. Included here as a convenience
+Used by Camera-buddy.lua. This file actually belongs to the obs-visca-control plugin found on the OBS website. It is a socket library used by Camera-buddy.lua to control PTZ cameras over IP. Included here as a convenience.
 
 ## speed_survey.py
 Uses the speedtest-cli package to do periodic internet speed tests.
