@@ -1,10 +1,10 @@
 obs = obslua
 
 local program_name = "ReaperMarker"
-local version = "1.0"
+local version = "1.1"
 
 -- Set true to get debug printing
-local debug_print_enabled = false
+local debug_print_enabled = true
 
 -- Edited/persisted items
 local timestamp_offset = 0
@@ -73,6 +73,11 @@ function script_load(settings)
     obs.obs_data_array_release(save_array)
 
     obs.obs_frontend_add_event_callback(handle_frontend_event)
+
+    if obs.obs_frontend_recording_active() then
+        -- Recording already in progress: create a marker file
+        start_acting()
+    end
 end
 
 function script_save(settings)
@@ -137,44 +142,49 @@ function script_update(settings)
           ',' .. text2 .. ',' .. text3 .. ',' .. text4 )
 end
 
+-- Create a CSV file and start capturing markers
+function start_acting()
+    local prof = obs.obs_frontend_get_profile_config()
+    if prof then
+        -- Default something like C:\\Users\\ewe\\Videos
+        local path = obs.config_get_string(prof, "AdvOut", "RecFilePath")
+        debug_print("Recording to " .. path)
+
+        -- Default is %CCYY-%MM-%DD %hh-%mm-%ss
+        local name = obs.config_get_string(prof, "Output", "FilenameFormatting")
+        debug_print("Name format " .. name)
+        
+        -- Format comes in like %CCYY-%MM-%DD %hh-%mm-%ss with all numeric values,
+        -- while os.data would want %Y-%m-%d %H-%M-%S.
+        -- We use a rock as a hammer, and cuss the lack of a non-pattern substitution in Lua
+        local timestamp = os.date("*t")
+        name = string.gsub(name, "%%", "X")
+        name = string.gsub(name, "XCCYY", timestamp['year'])
+        name = string.gsub(name, "XMM", string.format( "%02d", timestamp['month']))
+        name = string.gsub(name, "XDD", string.format( "%02d", timestamp['day']))
+        name = string.gsub(name, "Xhh", string.format( "%02d", timestamp['hour']))
+        name = string.gsub(name, "Xmm", string.format( "%02d", timestamp['min']))
+        name = string.gsub(name, "Xss", string.format( "%02d", timestamp['sec']))
+        local filename = path .. '\\' .. name .. '.csv'
+        debug_print("Creating logfile: " .. filename)
+
+        logfile = io.open(filename, 'w')
+        if logfile == nil then
+            -- Force a visible indication by forcing a Lua error
+            -- to show the script log.
+            not_a_function("Can't open log file")
+        else
+            markerNumber = 1
+            time_zero = obs.os_gettime_ns()
+            logfile:write("#,Name,Start,End,Length\n")
+            debug_print("Recording started")
+        end
+    end
+end
+
 function handle_frontend_event(event)
     if event == obs.OBS_FRONTEND_EVENT_RECORDING_STARTED then
-        local prof = obs.obs_frontend_get_profile_config()
-        if prof then
-            -- Default something like C:\\Users\\ewe\\Videos
-            local path = obs.config_get_string(prof, "AdvOut", "RecFilePath")
-            debug_print("Recording to " .. path)
-
-            -- Default is %CCYY-%MM-%DD %hh-%mm-%ss
-            local name = obs.config_get_string(prof, "Output", "FilenameFormatting")
-            debug_print("Name format " .. name)
-            
-            -- Format comes in like %CCYY-%MM-%DD %hh-%mm-%ss and resolves to all numeric values,
-            -- while os.data would want %Y-%m-%d %H-%M-%S
-            -- We use a rock as a hammer, and cuss the lack of a non-pattern substitution in Lua
-            local timestamp = os.date("*t")
-            name = string.gsub(name, "%%", "X")
-            name = string.gsub(name, "XCCYY", timestamp['year'])
-            name = string.gsub(name, "XMM", string.format( "%02d", timestamp['month']))
-            name = string.gsub(name, "XDD", string.format( "%02d", timestamp['day']))
-            name = string.gsub(name, "Xhh", string.format( "%02d", timestamp['hour']))
-            name = string.gsub(name, "Xmm", string.format( "%02d", timestamp['min']))
-            name = string.gsub(name, "Xss", string.format( "%02d", timestamp['sec']))
-            local filename = path .. '\\' .. name .. '.csv'
-            debug_print("Creating logfile: " .. filename)
-
-            logfile = io.open(filename, 'w')
-            if logfile == nil then
-                -- Force a visible indication by forcing a Lua error
-                -- to show the script log.
-                not_a_function("Can't open log file")
-            else
-                markerNumber = 1
-                time_zero = obs.os_gettime_ns()
-                logfile:write("#,Name,Start,End,Length\n")
-                debug_print("Recording started")
-            end
-        end
+        start_acting()
 
 	elseif event == obs.OBS_FRONTEND_EVENT_RECORDING_STOPPED then
         if logfile ~= nil then
