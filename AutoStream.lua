@@ -1,7 +1,7 @@
 -- AutoStream.lua - simple automated streaming
 
 local obs = obslua
-local version = '1.6'
+local version = '1.7'
 
 -- These names must match the source names used on the control scene
 local explainer_source  = 'Automatic Streamer - explainer'
@@ -244,7 +244,7 @@ function handle_frontend_event(event)
                     -- Preview changed to command scene: resume command processing
                     set_state(STATE_RUN)
                     print('Preview changed to command_scene: resume processing')
-                else
+                elseif state ~= STATE_PAUSED then
                     -- Preview changed away from command scene: pause command processing
                     set_state(STATE_PAUSED)
                     print('Preview changed away from command_scene: pause processing')
