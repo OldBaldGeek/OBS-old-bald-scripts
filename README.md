@@ -5,6 +5,10 @@ These scripts and browser docks were written to simplify streaming of church ser
 
 You are welcome to use them, but they are mostly here just for my revision control.
 
+## OBS-configuration
+Directory tree with OBS configuration files (AppData). Includes scene collection, profile, and theme.
+Here for documentation and disaster recovery.
+
 ## AutoStream.lua (OBS script)
 Simple automated live-stream or recording based on a command file. Intended to perform basic actions when no OBS operator is available.
 
@@ -92,7 +96,7 @@ Used by Camera-buddy.lua. This file actually belongs to the obs-visca-control pl
 ## speed_survey.py
 Uses the speedtest-cli package to do periodic internet speed tests.
 
-We wrote this to find the cause of large changes in internet speed to our streaming computer. Eventually traced to interference from fluorescent up-lights on an Ethernhet-over-powerline link.
+We wrote this to find the cause of large changes in internet speed to our streaming computer. Eventually traced to interference from fluorescent up-lights on an Ethernet-over-powerline link.
 
 ## logorrhea.lua
 Does a bunch of logging of OBS events as a diagnostic aid.
