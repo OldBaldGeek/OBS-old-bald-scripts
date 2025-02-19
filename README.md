@@ -49,7 +49,7 @@ Replaced by cabrini-dock2.html.
 Obsolete browser dock to do PTZ control for an Aver VC520+ camera.
 Replaced by cabrini-dock or cabrini-dock2
 
-## MarkerMaker.lua
+## MarkerMaker.lua (OBS script)
 When recording, allows hotkeys and scene changes to generate timestamped markers for use when editing the recording in Reaper or Shotcut.
 
 We record presentations where the audience asks questions. The presider
