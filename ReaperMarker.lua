@@ -1,17 +1,23 @@
 obs = obslua
 
-local program_name = "ReaperMarker"
-local version = "1.1"
+local program_name = "MarkerMaker"
+local version = "2.0"
 
 -- Set true to get debug printing
-local debug_print_enabled = true
+local debug_print_enabled = false
 
 -- Edited/persisted items
 local timestamp_offset = 0
-local text1 = 'K1'
-local text2 = 'K2'
-local text3 = 'K3'
-local text4 = 'K4'
+local log_scenes = false
+local text1 = ''
+local text2 = ''
+local text3 = ''
+local text4 = ''
+local color0 = 0
+local color1 = 0
+local color2 = 0
+local color3 = 0
+local color4 = 0
 
 -- Implementation items
 local logfile = nil
@@ -28,11 +34,17 @@ function script_description()
     debug_print("in script_description")
     return '<h2>' .. program_name .. ' Version ' .. version ..'</h2>' ..
         [[
-           <p>When a recording is active, use hot keys to generate timestamped
-           markers to facilitate audio editing in Reaper.</p>
-           <p>Output is a CSV file that may be imported in Reaper via "View",
-           "Region/Marker Manager", "Import..."</p>
-           <p>NOTE: set Reaper timeline format to "Seconds" before importing.</p>
+           <p>When recording is active, use hot keys and scene changes to
+           generate timestamped markers to facilitate editing in Reaper or
+           Shotcut. Output is a .CSV file.</p>
+
+           <p><b>To import the marker file in Reaper</b>, set Reaper timeline
+           format to "Seconds," then select "View," "Region/Marker Manager,"
+           "Options," "Import..."</p>
+
+           <p><b>To use the markers in Shotcut</b>, close the Shotcut project.
+           Use MarkMunger.py to merge the marker file into the .MLT file, then
+           continue editing in Shotcut.</p>
         ]]
 end
 
@@ -106,10 +118,22 @@ end
 
 function script_defaults(settings)
     debug_print("in script_defaults")
-    obs.obs_data_set_default_string(settings, 'Text1', 'Room')
-    obs.obs_data_set_default_string(settings, 'Text2', 'Presenter')
+    obs.obs_data_set_default_int(settings, 'Offset', 0)
+
+    obs.obs_data_set_default_bool(settings, 'LogScenes', false)
+    obs.obs_data_set_default_int(settings, 'Color0', 0x0080FF)
+
+    obs.obs_data_set_default_string(settings, 'Text1', 'Key1')
+    obs.obs_data_set_default_int(settings, 'Color1', 0xFFFF00)
+
+    obs.obs_data_set_default_string(settings, 'Text2', 'Key2')
+    obs.obs_data_set_default_int(settings, 'Color2', 0xFF00FF)
+
     obs.obs_data_set_default_string(settings, 'Text3', 'Key3')
+    obs.obs_data_set_default_int(settings, 'Color3', 0x00FFFF)
+
     obs.obs_data_set_default_string(settings, 'Text4', 'Key4')
+    obs.obs_data_set_default_int(settings, 'Color4', 0xFF8000)
 end
 
 function script_properties()
@@ -117,73 +141,83 @@ function script_properties()
 
     local props = obs.obs_properties_create()
 
-    local prop = obs.obs_properties_add_int(props, 'Offset', 'Timestamp Offset (msec)',
-            -10000, 10000, 1)
+    local prop = obs.obs_properties_add_int(props, 'Offset',
+            'Timestamp Offset (msec)', -10000, 10000, 1)
+
+    prop = obs.obs_properties_add_bool(props, 'LogScenes', 'Mark scene changes')
+    prop = obs.obs_properties_add_color(props, 'Color0', '')
+
     prop = obs.obs_properties_add_text(props, 'Text1',
-            'Key 1 Text', obs.OBS_TEXT_DEFAULT)
+            'Hotkey 1 Text', obs.OBS_TEXT_DEFAULT)
+    prop = obs.obs_properties_add_color(props, 'Color1', '')
+
     prop = obs.obs_properties_add_text(props, 'Text2',
-            'Key 2 Text', obs.OBS_TEXT_DEFAULT)
+            'Hotkey 2 Text', obs.OBS_TEXT_DEFAULT)
+    prop = obs.obs_properties_add_color(props, 'Color2', '')
+
     prop = obs.obs_properties_add_text(props, 'Text3',
-            'Key 3 Text', obs.OBS_TEXT_DEFAULT)
+            'Hotkey 3 Text', obs.OBS_TEXT_DEFAULT)
+    prop = obs.obs_properties_add_color(props, 'Color3', '')
+
     prop = obs.obs_properties_add_text(props, 'Text4',
-            'Key 4 Text', obs.OBS_TEXT_DEFAULT)
+            'Hotkey 4 Text', obs.OBS_TEXT_DEFAULT)
+    prop = obs.obs_properties_add_color(props, 'Color4', '')
 
     return props
 end
 
 function script_update(settings)
     timestamp_offset = obs.obs_data_get_int(settings, 'Offset')
-    text1 = obs.obs_data_get_string(settings, 'Text1')
-    text2 = obs.obs_data_get_string(settings, 'Text2')
-    text3 = obs.obs_data_get_string(settings, 'Text3')
-    text4 = obs.obs_data_get_string(settings, 'Text4')
 
-    print('in script_update: ' .. timestamp_offset .. ',' .. text1 ..
-          ',' .. text2 .. ',' .. text3 .. ',' .. text4 )
+    log_scenes = obs.obs_data_get_bool(settings, 'LogScenes')
+    color0 = obs.obs_data_get_int(settings, 'Color0')
+
+    text1 = obs.obs_data_get_string(settings, 'Text1')
+    color1 = obs.obs_data_get_int(settings, 'Color1')
+
+    text2 = obs.obs_data_get_string(settings, 'Text2')
+    color2 = obs.obs_data_get_int(settings, 'Color2')
+
+    text3 = obs.obs_data_get_string(settings, 'Text3')
+    color3 = obs.obs_data_get_int(settings, 'Color3')
+
+    text4 = obs.obs_data_get_string(settings, 'Text4')
+    color4 = obs.obs_data_get_int(settings, 'Color4')
+
+    debug_print('in script_update: ' .. timestamp_offset .. ', ' ..
+           text1 .. '/' .. color1 .. ', ' ..
+           text2 .. '/' .. color2 .. ', ' ..
+           text3 .. '/' .. color3 .. ', ' ..
+           text4 .. '/' .. color4)
 end
 
 -- Create a CSV file and start capturing markers
 function start_acting()
-    local prof = obs.obs_frontend_get_profile_config()
-    if prof then
-        -- Default something like C:\\Users\\ewe\\Videos
-        local path = obs.config_get_string(prof, "AdvOut", "RecFilePath")
-        debug_print("Recording to " .. path)
-
-        -- Default is %CCYY-%MM-%DD %hh-%mm-%ss
-        local name = obs.config_get_string(prof, "Output", "FilenameFormatting")
-        debug_print("Name format " .. name)
-        
-        -- Format comes in like %CCYY-%MM-%DD %hh-%mm-%ss with all numeric values,
-        -- while os.data would want %Y-%m-%d %H-%M-%S.
-        -- We use a rock as a hammer, and cuss the lack of a non-pattern substitution in Lua
-        local timestamp = os.date("*t")
-        name = string.gsub(name, "%%", "X")
-        name = string.gsub(name, "XCCYY", timestamp['year'])
-        name = string.gsub(name, "XMM", string.format( "%02d", timestamp['month']))
-        name = string.gsub(name, "XDD", string.format( "%02d", timestamp['day']))
-        name = string.gsub(name, "Xhh", string.format( "%02d", timestamp['hour']))
-        name = string.gsub(name, "Xmm", string.format( "%02d", timestamp['min']))
-        name = string.gsub(name, "Xss", string.format( "%02d", timestamp['sec']))
-        local filename = path .. '\\' .. name .. '.csv'
-        debug_print("Creating logfile: " .. filename)
-
-        logfile = io.open(filename, 'w')
-        if logfile == nil then
-            -- Force a visible indication by forcing a Lua error
-            -- to show the script log.
-            not_a_function("Can't open log file")
-        else
-            markerNumber = 1
-            time_zero = obs.os_gettime_ns()
-            logfile:write("#,Name,Start,End,Length\n")
-            debug_print("Recording started")
-        end
+    -- Name of the current recording file (OBS 29.0 and later)
+    filename = string.gsub(obs.obs_frontend_get_last_recording(), '.mkv', '.csv')
+    logfile = io.open(filename, 'w')
+    if logfile == nil then
+        -- Force a Lua error: show the script log as a visible error indication
+        not_a_function("Can't open log file")
+    else
+        markerNumber = 1
+        time_zero = obs.os_gettime_ns()
+        logfile:write("#,Name,Start,End,Length,Color\n")
+        debug_print("Recording started")
     end
 end
 
 function handle_frontend_event(event)
-    if event == obs.OBS_FRONTEND_EVENT_RECORDING_STARTED then
+    if (event == obs.OBS_FRONTEND_EVENT_SCENE_CHANGED) then
+        if log_scenes then
+            local scenesource = obs.obs_frontend_get_current_scene()
+            if scenesource ~= nil then
+                emit_timestamp('Scene: ' .. obs.obs_source_get_name(scenesource), color0)
+                obs.obs_source_release(scenesource)
+            end
+        end
+
+    elseif event == obs.OBS_FRONTEND_EVENT_RECORDING_STARTED then
         start_acting()
 
 	elseif event == obs.OBS_FRONTEND_EVENT_RECORDING_STOPPED then
@@ -195,37 +229,42 @@ function handle_frontend_event(event)
     end
 end
 
-function emit_timestamp(a_message)
+function emit_timestamp(a_message, a_color)
     debug_print("in emit_timestamp with " .. a_message)
     if logfile ~= nil then
         now = (obs.os_gettime_ns() - time_zero) / 1000000000
         now = now + (timestamp_offset/1000)
-        logfile:write( 'M' .. markerNumber .. ',' .. a_message .. ',' .. 
-                       string.format( "%.3f", now) .. ',,\n' )
+
+        -- Replace commas with dashes to avoid confusing simple CSV parsers
+        -- High byte of color is an alpha, not wanted by our output
+        logfile:write( 'M' .. markerNumber .. ',' ..
+                       string.gsub(a_message, ',', '-') .. ',' ..
+                       string.format("%.3f", now) .. ',,,' ..
+                       string.format("%06X", a_color % 0x01000000) .. '\n' )
         markerNumber = markerNumber + 1
     end
 end
 
 function log_key1(pressed)
     if pressed then
-        emit_timestamp(text1)
+        emit_timestamp(text1, color1)
     end
 end
 
 function log_key2(pressed)
     if pressed then
-        emit_timestamp(text2)
+        emit_timestamp(text2, color2)
     end
 end
 
 function log_key3(pressed)
     if pressed then
-        emit_timestamp(text3)
+        emit_timestamp(text3, color3)
     end
 end
 
 function log_key4(pressed)
     if pressed then
-        emit_timestamp(text4)
+        emit_timestamp(text4, color4)
     end
 end
