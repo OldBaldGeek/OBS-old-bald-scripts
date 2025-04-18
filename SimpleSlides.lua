@@ -7,31 +7,29 @@
 --
 
 --[[
-The OBS Image Slide Show source loads all images into video memory. That
-lets it change slides without rendering lags, but limits the size of the
-slideshow, since UNCOMPRESSED images are used, and video memory is a limited
-resource.
+This scrip was written display PowerPoint slides exported as png images,
+allowing an operator to show them in a stream without needing to switch back
+and forth between OBS and PowerPoint.
 
-This script avoids the memory problem by simply loading a new image file into
-an Image Source for each slide. The trade off is that some frames may be
-dropped during image changes due to rendering lag.
-On my PC with an i7 and Intel HD4600 graphics, it drops the same number of
+When this script was created, the OBS Image Slide Show source loaded all images
+into video memory. That let it change slides without rendering lags, but limited
+the size of the slideshow, as video memory is a limited resource. This
+restriction has been relaxed/removed in later versions of OBS, but this script
+has other features.
+
+This script avoids any memory limitations by simply loading a new image file into
+an Image Source for each slide. The trade off is that a few frames may be
+dropped during changes of large images due to rendering lag.
+On my PC with an i7 4770 and Intel HD4600 graphics, it drops the same number of
 frames as are dropped if you manually change the filespec for an Image Source:
 no drops for 1280x720 images, up to 4 frames dropped for 3306x1860 images.
 If a scene contains only the slide, drops are hard to see. 
 If a scene also has a camera or other moving source, it can be noticeable.
-
-I wrote this to display PowerPoint or LibreOffice Impress slides, exported as
-images, allowing an operator to run a stream without needing to switch back and
-forth between PowerPoint and OBS.
-I use an on-line PPTX-to-image service, which generates 3306x1860 images, and
-using these causes frames to be dropped. Since my stream is only 1280x720, I used
-Microsoft PowerToys to rescale all the images to 1280x720, eliminating the drop.
 --]]
 
 obs = obslua
 
-local version = "1.2"
+local version = "2.0"
 
 -- Set true to get debug printing
 local debug_print_enabled = false
@@ -70,9 +68,11 @@ function script_description()
             
             <p>The filespec in the Image Source is used to specify the directory.
             Files of type png, jpg, jpeg, bmp, and gif will be shown.
-            Files are shown in sort order: XXX1 will be followed
-            by XXX10, not by XXX2, so you may need to normalize
-            your filenames (XXX01, XXX02...)</p>
+            Filenames that end in digits are ordered numerically. Thus
+            Slide1.png, Slide2.png, Slide10.png will be shown in the correct
+            order, rather than Slide1.png, Slide10.png, Slide2.png as
+            Windows alphabetic sort would show them.
+            </p>
 
             <p>Slides may be changed via assignable hotkey, or via the buttons
             below. Hotkeys and buttons act only if a SimpleSlide Image Source
@@ -307,6 +307,17 @@ function splitpath(filespec)
     return path, name, extension
 end
 
+-- Return the filename in lower case, and any trailing digits as an integer
+-- If there are no trailing digits, the numeric value returns -1
+function name_and_number(file_name)
+    local fname, fnumber = string.match( string.lower(file_name), "(.-)(%d*)%.")
+    if fnumber == nil or fnumber == '' then
+        fnumber = '-1'
+    end
+
+    return fname, tonumber(fnumber)
+end
+
 -- If we don't have slideshow data for special_image_name, create it now
 function create_slideshow_if_needed(special_image_name)
     if slide_shows[special_image_name] then
@@ -342,7 +353,6 @@ function create_slideshow_if_needed(special_image_name)
                     if entry and not entry.directory then
                         local xpath
                         xpath, name, extension = splitpath(entry.d_name)
-
                         if allowed_filetypes[string.lower(extension)] then
                             -- debug_print('  Image file="' .. entry.d_name .. '"')
                             table.insert(filenames, path .. entry.d_name)
@@ -351,8 +361,16 @@ function create_slideshow_if_needed(special_image_name)
                 until not entry
                 obslua.os_closedir(dir)
                 
-                -- Alphabetize (case insensitive) the filenames
-                table.sort(filenames, function(a,b) return string.lower(a) < string.lower(b) end )
+                -- Order the names: alphabetical, but trailing numerals in order
+                table.sort(filenames,
+                    function(a,b)
+                        local a_name, a_number = name_and_number(a)
+                        local b_name, b_number = name_and_number(b)
+                        if a_name ~= b_name then
+                            return a_name < b_name
+                        end
+                        return a_number < b_number
+                    end )
 
                 -- Save the slideshow for later use
                 show['filenames'] = filenames
