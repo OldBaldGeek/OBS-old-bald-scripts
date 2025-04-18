@@ -569,9 +569,18 @@ cmd_table['ctl_hotkey'] =
 cmd_table['show_streamkey'] =
     function(tail)
         local service = obs.obs_frontend_get_streaming_service()
-        local key = obs.obs_service_get_key(service)
-        -- Doc for obs_frontend_get_streaming_service says "returns new reference", but
-        -- calling obs.obs_service_release(service) causes a crash on second get
+        local key
+        if obs.obs_service_get_key ~= nil then
+            -- obs_service_get_key was deprecated in 29.1, removed in 31.0
+            key = obs.obs_service_get_key(service)
+        else
+            -- obs_service_get_connect_info was added in 29.1
+            -- But obs.OBS_SERVICE_CONNECT_INFO_STREAM_KEY = 2 is not defined
+            -- for LUA even in 31.0.3, so we use obs_service_get_key if
+            -- available to avoid a naked 2 (that's how Mama raised me)
+            key = obs.obs_service_get_connect_info(service, 2)
+        end
+
         show_text( 'Current Streaming Key is "' .. key .. '"')
         return IMMEDIATE_NEXT
     end
