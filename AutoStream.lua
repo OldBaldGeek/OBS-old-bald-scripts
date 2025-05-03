@@ -1,7 +1,7 @@
 -- AutoStream.lua - simple automated streaming
 
 local obs = obslua
-local version = '1.7'
+local version = '2.0'
 
 -- These names must match the source names used on the control scene
 local explainer_source  = 'Automatic Streamer - explainer'
@@ -25,7 +25,7 @@ local label_to_index = {}           -- map between label and command index
   local STATE_RUN     = 3           -- Running
 local state = STATE_STOPPED
 
-local timer_interval_ms = 1000      -- timer poll interval
+local timer_interval_ms = 1000      -- action timer poll interval
 local timer_active = false
 local callback_active = false
 local clean_log_lines = '\n\n\n\n\n\n\n\n\n\n\n\n\n'
@@ -53,7 +53,7 @@ function script_description()
 end
 
 -- Text for "Explainer" text source. replace "%s" with actual filename
-local explainer_text = 
+local explainer_text =
 [[When this scene is visible in Preview, commands from
   "%s"
 will be executed to select scenes, set audio levels, and begin and end the stream.
@@ -98,7 +98,7 @@ function set_error(a_text)
 
     error_flag = true
     show_text('ERROR: ' .. a_text)
-    
+
     if not continue_on_error then
         set_state(STATE_STOPPED)
         show_text('STOPPED due to error')
@@ -180,7 +180,8 @@ end
 
 -- Called at script unload
 function script_unload()
-    -- print("script_unload")
+    stats_end()
+    print("script_unload")
 end
 
 -- Called after change of settings including once after script load
@@ -203,7 +204,7 @@ function script_properties()
                                 '*.txt *.*', '')
     obs.obs_properties_add_bool(props, 'continue_on_error', 'Continue on error (else stop)')
     obs.obs_properties_add_button(props, 'restart_button', 'Restart command file',
-        function() 
+        function()
             start_playing('Restart Button pressed')
         end)
 
@@ -277,7 +278,7 @@ function expand_tail(a_tail)
             local var = a_tail:sub(ix+1, jx)
             local value = variables[var]
             if value == nil then
-                set_error('unknown variable "' .. var .. '" in command tail "' .. 
+                set_error('unknown variable "' .. var .. '" in command tail "' ..
                           a_tail .. '"')
                 -- Not clear what to return here. Hope that empty tail will
                 -- cause our caller to generate an error and stop.
@@ -331,11 +332,11 @@ function execute_line(a_line, a_line_number)
         if entry ~=nil then
             retval = entry( expand_tail(tail) )
         else
-            return set_error('unknown command "' .. a_line .. '" (line ' .. 
+            return set_error('unknown command "' .. a_line .. '" (line ' ..
                               a_line_number .. ')')
         end
     end
-    
+
     return retval
 end
 
@@ -348,7 +349,7 @@ function timer_callback()
             retval = execute_line(line, command_index)
             if retval ~= DELAYED_SAME then
                 command_index = command_index + 1
-                
+
                 -- Remember when the next command will start.
                 -- (Used by WAIT and similar commands)
                 time_command_started = os.time()
@@ -364,7 +365,7 @@ end
 -- Load and start playing a command file
 function start_playing(a_reason)
     print('start_playing: ' .. a_reason)
-    
+
     -- Stop any execution in progress
     set_state(STATE_STOPPED)
 
@@ -373,7 +374,7 @@ function start_playing(a_reason)
     command_index = 0
     command_data = {}
     log_lines = clean_log_lines
-    
+
     if command_file == '' then
         local str = 'No command file to play'
         show_explainer(str)
@@ -525,7 +526,7 @@ cmd_table['program'] =
         if new_scene == nil then
             return set_error('no program scene called "' .. (tail or '') .. '"')
         end
-        
+
         -- Stop interpreting until the transition completes and
         -- we process OBS_FRONTEND_EVENT_PREVIEW_SCENE_CHANGED
         set_state(STATE_TRANSITIONING)
@@ -613,7 +614,7 @@ cmd_table['audiolevel'] =
         if pos == nil or value == nil then
             return set_error('audiolevel cannot parse "' .. (tail or '') .. '"')
         end
-        
+
         local source_name = tail:sub(1,pos-1)
         local source = obs.obs_get_source_by_name(source_name)
         if source == nil then
@@ -781,7 +782,7 @@ cmd_table['wait'] =
             show_text('Waiting ' .. sec .. ' seconds: ' .. delta, true)
             return DELAYED_SAME
         end
-        
+
         show_text('Waited ' .. tail .. ' seconds')
         return IMMEDIATE_NEXT
     end
@@ -843,3 +844,180 @@ cmd_table['stop_recording'] =
 
         return DELAYED_NEXT
     end
+
+-- Start gathering statistics
+cmd_table['log_stats'] =
+    function(tail)
+        local interval = tonumber(tail)
+        if interval ~= 0 then
+            stats_init(interval)
+        else
+            stats_end()
+        end
+
+        return IMMEDIATE_NEXT
+    end
+
+-- Variables for statistics
+local cpu_usage_info
+local maxCPU_usage
+local maxCPU_usageTime
+
+local maxAverageRenderTime
+local maxAverageRenderTimeTime
+
+local lastRenderSkip
+local lastRenderTotal
+local lastRenderSkipTime
+
+local lastOutputSkip
+local lastOutputTotal
+local lastOutputSkipTime
+
+local lastNetworkDrop
+local lastNetworkTotal
+local lastNetworkDropTime
+
+local lastNetworkCongestion
+local maxNetworkCongestion
+local maxNetworkCongestionTime
+
+-- Initialize statistics and begin gathering
+function stats_init(a_interval)
+    print('Start statistics' )
+    local now_hms = os.date( '%X on %x', os.time())
+
+    cpu_usage_info = obs.os_cpu_usage_info_start()
+    maxCPU_usage = 0
+    maxCPU_usageTime = now_hms
+
+    maxAverageRenderTime = 0
+    maxAverageRenderTimeTime = now_hms
+
+    lastRenderSkip = 0
+    lastRenderTotal = 0
+    lastRenderSkipTime = now_hms
+
+    lastOutputSkip = 0
+    lastOutputTotal = 0
+    lastOutputSkipTime = now_hms
+
+    lastNetworkDrop = 0
+    lastNetworkTotal = 0
+    lastNetworkDropTime = now_hms
+
+    lastNetworkCongestion = 0
+    maxNetworkCongestion = 0
+    maxNetworkCongestionTime = now_hms
+
+    -- Do an initial call to set base values
+    stats_timer_callback()
+
+    -- Start periodic update
+    obs.timer_add(stats_timer_callback, a_interval)
+end
+
+-- Stop gathering statistics, print a summary
+function stats_end()
+    obs.timer_remove(stats_timer_callback)
+    obs.os_cpu_usage_info_destroy(cpu_usage_info)
+
+    print('Statistics Summary' )
+    print( string.format('** Max CPU usage: %.1f%% at %s', maxCPU_usage, maxCPU_usageTime) )
+
+    print( string.format('** Max frame render time: %.1f msec at %s',
+           maxAverageRenderTime / 1000000.0, maxAverageRenderTimeTime) )
+
+    print('** Render skipped ' .. lastRenderSkip .. '/' .. lastRenderTotal ..
+          ' Last skip ' .. lastRenderSkipTime)
+
+    print('** Encode skipped ' .. lastOutputSkip .. '/' .. lastOutputTotal ..
+          ' Last skip ' .. lastOutputSkipTime)
+
+    print('** Network dropped ' .. lastNetworkDrop .. '/' .. lastNetworkTotal ..
+          ' Last drop ' .. lastNetworkDropTime)
+
+    print( string.format('** Max network congestion: %.2f at %s',
+           maxNetworkCongestion, maxNetworkCongestionTime) )
+    print('End of Statistics Summary' )
+end
+
+local ffi = require("ffi")
+ffi.cdef[[
+    struct video;
+    typedef struct video video_t;
+    video_t* obs_get_video();
+    uint32_t video_output_get_skipped_frames(const video_t *video);
+    uint32_t video_output_get_total_frames(const video_t *video);
+]]
+local obsffi = ffi.load("obs")
+
+function stats_timer_callback()
+    local now_hms = os.date( '%X on %x', os.time())
+
+    local usage = obs.os_cpu_usage_info_query(cpu_usage_info)
+    if usage > maxCPU_usage then
+        print( string.format('** Max CPU usage: %.1f%%', usage) )
+        maxCPU_usage = usage
+        maxCPU_usageTime = now_hms
+    end
+
+    local frameTime = obs.obs_get_average_frame_time_ns()
+    if frameTime > maxAverageRenderTime then
+        print( string.format('** Max frame render time: %.1f msec', frameTime / 1000000.0) )
+        maxAverageRenderTime = frameTime
+        maxAverageRenderTimeTime = now_hms
+    end
+
+	lastRenderTotal = obs.obs_get_total_frames()
+	local total_lagged = obs.obs_get_lagged_frames()
+    if total_lagged ~= lastRenderSkip then
+        print('** Render skipped ' .. total_lagged - lastRenderSkip ..
+              ' frames since ' .. lastRenderSkipTime .. '. Total skips ' ..
+              total_lagged .. '/' .. lastRenderTotal )
+        lastRenderSkip = total_lagged
+        lastRenderSkipTime = now_hms
+    end
+
+    local video = obsffi.obs_get_video()
+    if video ~= nil then
+        lastOutputTotal = obsffi.video_output_get_total_frames(video)
+        local total_skipped = obsffi.video_output_get_skipped_frames(video)
+        if total_skipped ~= lastOutputSkip then
+            print('** Encode skipped ' .. total_skipped - lastOutputSkip ..
+                  ' frames since ' .. lastOutputSkipTime .. '. Total skips ' ..
+                  total_skipped .. '/' .. lastOutputTotal )
+            lastOutputSkip = total_skipped
+            lastOutputSkipTime = now_hms
+        end
+    end
+
+    local output = obs.obs_frontend_get_streaming_output()
+    if output ~= nil then
+        lastNetworkTotal = obs.obs_output_get_total_frames(output)
+        local dropped = obs.obs_output_get_frames_dropped(output)
+        local congestion = obs.obs_output_get_congestion(output)
+        obs.obs_output_release(output)
+
+        if dropped ~= lastNetworkDrop then
+            print('** Network dropped ' .. dropped - lastNetworkDrop ..
+                  ' frames since ' .. lastNetworkDropTime .. '. Total drops ' ..
+                  dropped .. '/' .. lastNetworkTotal )
+            lastNetworkDrop = dropped
+            lastNetworkDropTime = now_hms
+        end
+
+        -- Congestion is a float in the range 0 (happy) to 1 (sad)
+        -- Log ten percent changes
+        if math.abs(congestion - lastNetworkCongestion) >= 0.1 then
+            print( string.format('** Network congestion: %.2f', congestion) )
+            lastNetworkCongestion = congestion
+        end
+
+        if congestion > maxNetworkCongestion then
+            print( string.format('** Max network congestion: %.2f', congestion) )
+            maxNetworkCongestion = congestion
+            maxNetworkCongestionTime = now_hms
+        end
+    end
+end
