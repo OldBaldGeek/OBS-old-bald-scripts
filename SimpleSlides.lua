@@ -23,13 +23,13 @@ dropped during changes of large images due to rendering lag.
 On my PC with an i7 4770 and Intel HD4600 graphics, it drops the same number of
 frames as are dropped if you manually change the filespec for an Image Source:
 no drops for 1280x720 images, up to 4 frames dropped for 3306x1860 images.
-If a scene contains only the slide, drops are hard to see. 
+If a scene contains only the slide, drops are hard to see.
 If a scene also has a camera or other moving source, it can be noticeable.
 --]]
 
 obs = obslua
 
-local version = "2.0"
+local version = "2.1"
 
 -- Set true to get debug printing
 local debug_print_enabled = false
@@ -65,19 +65,19 @@ function script_description()
             display sequential image files from a directory, creating a simple
             slide show without the memory limitations of the OBS Image Slide
             Show. However, some frames may be dropped during image changes.</p>
-            
+
             <p>The filespec in the Image Source is used to specify the directory.
             Files of type png, jpg, jpeg, bmp, and gif will be shown.
             Filenames that end in digits are ordered numerically. Thus
             Slide1.png, Slide2.png, Slide10.png will be shown in the correct
-            order, rather than Slide1.png, Slide10.png, Slide2.png as
-            Windows alphabetic sort would show them.
+            order, rather than Slide1.png, Slide10.png, Slide2.png as alphabetic
+            sort would show them.
             </p>
 
             <p>Slides may be changed via assignable hotkey, or via the buttons
             below. Hotkeys and buttons act only if a SimpleSlide Image Source
             is visible in the Preview or Program window.</p>
-            
+
             <p>You can have multiple independent slide shows using Sources with
             unique names: for example "SimpleSlides: lyrics" and
             "SimpleSlides: sermon graphics". Hotkeys and buttons will act on
@@ -99,9 +99,9 @@ end
 -- can change for the entire script module itself
 function script_properties()
     debug_print("in script_properties")
-    
+
     local props = obs.obs_properties_create()
-    
+
     -- Drop-list of SimpleSlides Image Sources
     local p = obs.obs_properties_add_list(props, "source", "Slide Show", obs.OBS_COMBO_TYPE_EDITABLE, obs.OBS_COMBO_FORMAT_STRING)
     local sources = obs.obs_enum_sources()
@@ -119,7 +119,7 @@ function script_properties()
     end
     obs.source_list_release(sources)
     obs.obs_property_set_modified_callback(p, prop_slideshow_changed)
-    
+
     -- Directory for the source
     p = obs.obs_properties_add_path(props, "directory", "Directory", obs.OBS_PATH_DIRECTORY, nil, nil)
     obs.obs_property_set_modified_callback(p, prop_directory_changed)
@@ -150,8 +150,7 @@ function prop_slideshow_changed(props, property, settings)
     else
         current_slide = show['current_slide']
         filenames     = show['filenames']
-        local name, extention
-        path, name, extension = splitpath(filenames[1])
+        path = splitpath(filenames[1])
     end
 
     print('Slideshow "' .. show_name .. '" with path "' .. path .. ' on slide ' .. current_slide)
@@ -173,7 +172,7 @@ function prop_directory_changed(props, property, settings)
     if not show then
         print('prop_directory_changed : No slideshow data for "' .. show_name .. '"')
     else
-        -- TODO: replace show['filenames'], and perhaps reset slide to 1
+        -- TODO: replace show['filenames'], and reset slide to 1
         print('prop_directory_changed: change directory for "' .. show_name .. '" to "' .. show_directory .. '"')
     end
 
@@ -202,7 +201,7 @@ function script_save(settings)
     save_array = obs.obs_hotkey_save(hotkey_next_id)
     obs.obs_data_set_array(settings, "next_slide_hotkey", save_array)
     obs.obs_data_array_release(save_array)
-    
+
     save_array = obs.obs_hotkey_save(hotkey_previous_id)
     obs.obs_data_set_array(settings, "previous_slide_hotkey", save_array)
     obs.obs_data_array_release(save_array)
@@ -227,11 +226,11 @@ function script_load(settings)
     save_array = obs.obs_data_get_array(settings, "next_slide_hotkey")
     obs.obs_hotkey_load(hotkey_next_id, save_array)
     obs.obs_data_array_release(save_array)
-    
+
     save_array = obs.obs_data_get_array(settings, "previous_slide_hotkey")
     obs.obs_hotkey_load(hotkey_previous_id, save_array)
     obs.obs_data_array_release(save_array)
-    
+
     -- See if a slideshow is active
     -- (when the script is reloaded - during startup, no scenes loaded yet)
     select_slideshow("script_load")
@@ -242,7 +241,7 @@ function script_unload()
 end
 
 -- on_save(loading) is called at startup and when a scene collection is loaded.
--- on_save(saving) is called when anything in a scene_collection is changed, 
+-- on_save(saving) is called when anything in a scene_collection is changed,
 -- just before a new scene collection is loaded, and during showdown.
 function on_save(save_data, saving, private_data)
 	debug_print( "on_save(" .. (saving and "saving)" or "loading)"))
@@ -269,13 +268,15 @@ function handle_frontend_event(event)
     end
 end
 
--- Given a path, return the directory part (including final slash or backslash)
--- file part, extension part (not including dot)
--- if there's no directory part, or extension, some strings may be empty
--- Yes, I know you could do it in one line using regex.
+-- Given a path, return
+-- * directory, including final slash or backslash. May be empty
+-- * filename in lower case, with any integer suffix removed. May be empty
+-- * integer suffix of filename as an integer, -1 if none
+-- * extension, not including dot. May be empty
 function splitpath(filespec)
-    local path, name, extension
+    local path, name, fnumber, extension
 
+    -- Find the rightmost \ or / as the end of the (optional) path
     local i = #filespec
     while i > 0 do
         local ch = string.sub(filespec,i,i)
@@ -289,6 +290,7 @@ function splitpath(filespec)
         path = string.sub(filespec,1,i)
     end
 
+    -- Find the right-most . to indicate the (optional) extension
     local j = #filespec
     while j > i+1 do
         local ch = string.sub(filespec,j,j)
@@ -303,19 +305,16 @@ function splitpath(filespec)
         name = string.sub(filespec,i+1,j-1)
         extension = string.sub(filespec,j+1)
     end
-    
-    return path, name, extension
-end
 
--- Return the filename in lower case, and any trailing digits as an integer
--- If there are no trailing digits, the numeric value returns -1
-function name_and_number(file_name)
-    local fname, fnumber = string.match( string.lower(file_name), "(.-)(%d*)%.")
+    -- Parse out any numeric tail on the filename, to allow proper sorting
+    name, fnumber = string.match( name, "(.-)(%d*)$")
     if fnumber == nil or fnumber == '' then
-        fnumber = '-1'
+        number = -1
+    else
+        number = tonumber(fnumber)
     end
 
-    return fname, tonumber(fnumber)
+    return path, string.lower(name), number, extension
 end
 
 -- If we don't have slideshow data for special_image_name, create it now
@@ -326,33 +325,28 @@ function create_slideshow_if_needed(special_image_name)
         debug_print('Creating slideshow for "' .. special_image_name .. '"')
 
         local show = {}
-        
         local source = obs.obs_get_source_by_name(special_image_name)
-        if source == nil then 
+        if source == nil then
             print('ERROR: no source for "' .. special_image_name .. '"')
         else
             -- Filespec is as entered when the source was created, possibly
             -- changed if the scene was saved after we advanced to another slide.
-            -- We extract the parts we need (currently just the path)
+            -- We just want the path here.
             local settings = obs.obs_source_get_settings(source)
             if not settings then
                 print('ERROR: no settings for "' .. special_image_name .. '"')
             else
                 local filespec = obs.obs_data_get_string(settings, 'file')
                 obs.obs_data_release(settings)
-                
-                local path, name, extension
-                path, name, extension = splitpath(filespec)
-                debug_print('Filespec="' .. filespec .. '" path="' .. path .. '" name="' .. name .. '" ext="' .. extension .. '"')
 
                 local filenames = {}
+                local path, name, number, extension = splitpath(filespec)
                 local dir = obslua.os_opendir(path)
                 local entry
                 repeat
                     entry = obslua.os_readdir(dir)
                     if entry and not entry.directory then
-                        local xpath
-                        xpath, name, extension = splitpath(entry.d_name)
+                        _, _, _, extension = splitpath(entry.d_name)
                         if allowed_filetypes[string.lower(extension)] then
                             -- debug_print('  Image file="' .. entry.d_name .. '"')
                             table.insert(filenames, path .. entry.d_name)
@@ -360,12 +354,15 @@ function create_slideshow_if_needed(special_image_name)
                     end
                 until not entry
                 obslua.os_closedir(dir)
-                
-                -- Order the names: alphabetical, but trailing numerals in order
+
+                -- Order the names: alphabetical, but trailing numerals in order,
+                -- rather than default sort as foo1, foo10, foo11, foo2.
+                -- Ignore path, since all files are in the same directory
+                -- Ignore extension, since they will typically be the same.
                 table.sort(filenames,
                     function(a,b)
-                        local a_name, a_number = name_and_number(a)
-                        local b_name, b_number = name_and_number(b)
+                        local a_path, a_name, a_number, a_ext = splitpath(a)
+                        local b_path, b_name, b_number, b_ext = splitpath(b)
                         if a_name ~= b_name then
                             return a_name < b_name
                         end
@@ -485,11 +482,11 @@ function do_slide(label, action)
                 if not nowSettings then
                     print( "ERROR: Failed to get current settings for " .. active_source_name )
                 else
-                    current_filename = obs.obs_data_get_string(nowSettings, "file") 
+                    current_filename = obs.obs_data_get_string(nowSettings, "file")
                     obs.obs_data_release(nowSettings)
                     -- debug_print( "Old file for " .. active_source_name .. ' is ' .. current_filename)
                 end
-                
+
                 if new_filename and (new_filename ~= current_filename) then
                     local settings = obs.obs_data_create()
 
