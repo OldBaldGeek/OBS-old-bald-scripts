@@ -7,7 +7,7 @@
 --
 
 --[[
-This scrip was written display PowerPoint slides exported as png images,
+This script was written display PowerPoint slides exported as png images,
 allowing an operator to show them in a stream without needing to switch back
 and forth between OBS and PowerPoint.
 
@@ -29,7 +29,7 @@ If a scene also has a camera or other moving source, it can be noticeable.
 
 obs = obslua
 
-local version = "2.1"
+local version = "2.2"
 
 -- Set true to get debug printing
 local debug_print_enabled = false
@@ -62,11 +62,9 @@ function script_description()
     debug_print("in script_description")
     return '<h2>SimpleSlides Version ' .. version ..'</h2>' ..
            [[<p>Use an Image Source whose name begins with "SimpleSlides:" to
-            display sequential image files from a directory, creating a simple
-            slide show without the memory limitations of the OBS Image Slide
-            Show. However, some frames may be dropped during image changes.</p>
+            display image files from a directory, creating a slide show.</p>
 
-            <p>The filespec in the Image Source is used to specify the directory.
+            <p>The filespec in the Image Source specifies the directory.
             Files of type png, jpg, jpeg, bmp, and gif will be shown.
             Filenames that end in digits are ordered numerically. Thus
             Slide1.png, Slide2.png, Slide10.png will be shown in the correct
@@ -74,15 +72,12 @@ function script_description()
             sort would show them.
             </p>
 
-            <p>Slides may be changed via assignable hotkey, or via the buttons
-            below. Hotkeys and buttons act only if a SimpleSlide Image Source
-            is visible in the Preview or Program window.</p>
+            <p>Change slides via hotkey.</p>
 
             <p>You can have multiple independent slide shows using Sources with
-            unique names: for example "SimpleSlides: lyrics" and
-            "SimpleSlides: sermon graphics". Hotkeys and buttons will act on
-            whichever slideshow is visible in the Preview or Program window,
-            with Program taking precedence.</p>
+            unique names: for example "SimpleSlides: lyrics" and "SimpleSlides:
+            sermon graphics". Hotkeys will act on whichever slideshow is visible
+            in the Preview or Program window, with Program taking precedence.</p>
            ]]
 end
 
@@ -103,7 +98,10 @@ function script_properties()
     local props = obs.obs_properties_create()
 
     -- Drop-list of SimpleSlides Image Sources
-    local p = obs.obs_properties_add_list(props, "source", "Slide Show", obs.OBS_COMBO_TYPE_EDITABLE, obs.OBS_COMBO_FORMAT_STRING)
+    local visible_show = nil
+    local p = obs.obs_properties_add_list(props, "source", "Slide Show",
+                                          obs.OBS_COMBO_TYPE_LIST,
+                                          obs.OBS_COMBO_FORMAT_STRING)
     local sources = obs.obs_enum_sources()
     if sources ~= nil then
         for _, source in ipairs(sources) do
@@ -111,8 +109,11 @@ function script_properties()
                 local name = obs.obs_source_get_name(source)
                 ix,len = string.find(name, source_key)
                 if ix == 1 then
-                    debug_print( 'script_properties adding source "' .. name .. '"')
+                    debug_print( '  script_properties adding source "' .. name .. '"')
                     obs.obs_property_list_add_string(p, name, name)
+                    if not visible_show then
+                        visible_show = name
+                    end
                 end
             end
         end
@@ -120,16 +121,17 @@ function script_properties()
     obs.source_list_release(sources)
     obs.obs_property_set_modified_callback(p, prop_slideshow_changed)
 
-    -- Directory for the source
-    p = obs.obs_properties_add_path(props, "directory", "Directory", obs.OBS_PATH_DIRECTORY, nil, nil)
+    -- Show the path for the currently-visible slide show
+    local default_directory = nil
+    if visible_show then
+        default_directory = get_path_for_show(visible_show)
+        debug_print( '  Visible show "' .. visible_show .. '" dir="' .. default_directory .. '"')
+    end
+
+    p = obs.obs_properties_add_path(props, "directory", "Directory",
+                                    obs.OBS_PATH_DIRECTORY, nil,
+                                    default_directory)
     obs.obs_property_set_modified_callback(p, prop_directory_changed)
-
-    -- Current slide number
-    p = obs.obs_properties_add_int(props, "slide_number", "Current Slide", 0, 100000, 1)
-
-    obs.obs_properties_add_button(props, "next_button",     " NEXT ", next_button_clicked)
-    obs.obs_properties_add_button(props, "previous_button", " PREV ", previous_button_clicked)
-    obs.obs_properties_add_button(props, "reset_button",    "RESET",  reset_button_clicked)
 
     return props
 end
@@ -137,45 +139,22 @@ end
 -- UI: change to selected slideshow
 function prop_slideshow_changed(props, property, settings)
     local show_name = obs.obs_data_get_string(settings, "source")
-    local show_directory = obs.obs_data_get_string(settings, "directory")
-    local slide_number = obs.obs_data_get_int(settings, "slide_number")
-    print( 'prop_slideshow_changed for "' .. show_name .. '" directory "' .. show_directory .. '" slide ' .. slide_number)
-
-    -- Get path and slide number for this show and update the controls
-    local current_slide = 1
-    local path = ''
-    local show = slide_shows[show_name]
-    if not show then
-        print('No slideshow data for "' .. show_name .. '"')
-    else
-        current_slide = show['current_slide']
-        filenames     = show['filenames']
-        path = splitpath(filenames[1])
-    end
-
-    print('Slideshow "' .. show_name .. '" with path "' .. path .. ' on slide ' .. current_slide)
-    obs.obs_data_set_int(settings, "slide_number", current_slide)
+    local path = get_path_for_show(show_name)
     obs.obs_data_set_string(settings, "directory", path)
-
+    debug_print( 'prop_slideshow_changed for "' .. show_name ..
+                 '" with path "' .. path .. '"')
     return true
 end
 
--- UI: change to selected directory
+-- UI: change slideshow to use selected directory
 function prop_directory_changed(props, property, settings)
     local show_name = obs.obs_data_get_string(settings, "source")
-    local show_directory = obs.obs_data_get_string(settings, "directory")
-    local slide_number = obs.obs_data_get_int(settings, "slide_number")
-    print( 'prop_directory_changed for "' .. show_name .. '" directory "' .. show_directory .. '" slide ' .. slide_number)
+    local new_directory = obs.obs_data_get_string(settings, "directory")
+    debug_print('prop_directory_changed for "' .. show_name .. '" directory "' .. new_directory .. '"')
 
-    -- Update the SLIDESHOW
-    local show = slide_shows[show_name]
-    if not show then
-        print('prop_directory_changed : No slideshow data for "' .. show_name .. '"')
-    else
-        -- TODO: replace show['filenames'], and reset slide to 1
-        print('prop_directory_changed: change directory for "' .. show_name .. '" to "' .. show_directory .. '"')
-    end
-
+    -- Delete any current slideshow and create a new show
+    slide_shows[show_name] = nil
+    create_slideshow_if_needed(show_name, new_directory)
     return true
 end
 
@@ -317,66 +296,80 @@ function splitpath(filespec)
     return path, string.lower(name), number, extension
 end
 
+-- Return the directory for the named slideshow
+function get_path_for_show(a_show_name)
+    local directory = ''
+    local source = obs.obs_get_source_by_name(a_show_name)
+    if source then
+        local settings = obs.obs_source_get_settings(source)
+        if settings then
+            directory = splitpath(obs.obs_data_get_string(settings, 'file'))
+            obs.obs_data_release(settings)
+            debug_print('  Default path for "' .. a_show_name .. '" is ' .. directory )
+        end
+
+        obs.obs_source_release(source)
+    end
+
+    return directory
+end
+
 -- If we don't have slideshow data for special_image_name, create it now
-function create_slideshow_if_needed(special_image_name)
+function create_slideshow_if_needed(special_image_name, file_path)
     if slide_shows[special_image_name] then
         debug_print('Slideshow exists for "' .. special_image_name .. '"')
     else
         debug_print('Creating slideshow for "' .. special_image_name .. '"')
 
-        local show = {}
-        local source = obs.obs_get_source_by_name(special_image_name)
-        if source == nil then
-            print('ERROR: no source for "' .. special_image_name .. '"')
-        else
-            -- Filespec is as entered when the source was created, possibly
-            -- changed if the scene was saved after we advanced to another slide.
-            -- We just want the path here.
-            local settings = obs.obs_source_get_settings(source)
-            if not settings then
-                print('ERROR: no settings for "' .. special_image_name .. '"')
-            else
-                local filespec = obs.obs_data_get_string(settings, 'file')
-                obs.obs_data_release(settings)
-
-                local filenames = {}
-                local path, name, number, extension = splitpath(filespec)
-                local dir = obslua.os_opendir(path)
-                local entry
-                repeat
-                    entry = obslua.os_readdir(dir)
-                    if entry and not entry.directory then
-                        _, _, _, extension = splitpath(entry.d_name)
-                        if allowed_filetypes[string.lower(extension)] then
-                            -- debug_print('  Image file="' .. entry.d_name .. '"')
-                            table.insert(filenames, path .. entry.d_name)
-                        end
-                    end
-                until not entry
-                obslua.os_closedir(dir)
-
-                -- Order the names: alphabetical, but trailing numerals in order,
-                -- rather than default sort as foo1, foo10, foo11, foo2.
-                -- Ignore path, since all files are in the same directory
-                -- Ignore extension, since they will typically be the same.
-                table.sort(filenames,
-                    function(a,b)
-                        local a_path, a_name, a_number, a_ext = splitpath(a)
-                        local b_path, b_name, b_number, b_ext = splitpath(b)
-                        if a_name ~= b_name then
-                            return a_name < b_name
-                        end
-                        return a_number < b_number
-                    end )
-
-                -- Save the slideshow for later use
-                show['filenames'] = filenames
-                show['current_slide'] = 1
-                slide_shows[special_image_name] = show
-
-                do_slide('from create_slideshow_if_needed', 'SHOW_SLIDE')
+        if file_path then
+            -- Assure that a non-empty path ends in /
+            local ll = string.len(file_path)
+            if (ll > 0) and (file_path[ll] ~= '/') then
+                file_path = file_path .. '/'
             end
-            obs.obs_source_release(source)
+        else
+            -- Extract the path from the source of the current image
+            file_path = get_path_for_show(special_image_name)
+        end
+
+        -- Find image files in the specified directory
+        local filenames = {}
+        local dir = obslua.os_opendir(file_path)
+        local entry
+        repeat
+            entry = obslua.os_readdir(dir)
+            if entry and not entry.directory then
+                _, _, _, extension = splitpath(entry.d_name)
+                if allowed_filetypes[string.lower(extension)] then
+                    debug_print('  Image file="' .. entry.d_name .. '"')
+                    table.insert(filenames, file_path .. entry.d_name)
+                end
+            end
+        until not entry
+        obslua.os_closedir(dir)
+
+        -- Order the names: alphabetical, but trailing numerals in order,
+        -- rather than default sort as foo1, foo10, foo11, foo2.
+        -- Ignore path, since all files are in the same directory
+        -- Ignore extension, since they will typically be the same.
+        table.sort(filenames,
+            function(a,b)
+                local a_path, a_name, a_number, a_ext = splitpath(a)
+                local b_path, b_name, b_number, b_ext = splitpath(b)
+                if a_name ~= b_name then
+                    return a_name < b_name
+                end
+                return a_number < b_number
+            end )
+
+        -- Save the slideshow for later use
+        local show = {}
+        show['filenames'] = filenames
+        show['current_slide'] = 1
+        slide_shows[special_image_name] = show
+
+        if active_source_name == special_image_name then
+            do_slide('from create_slideshow_if_needed', 'FIRST_SLIDE')
         end
     end
 end
@@ -484,7 +477,7 @@ function do_slide(label, action)
                 else
                     current_filename = obs.obs_data_get_string(nowSettings, "file")
                     obs.obs_data_release(nowSettings)
-                    -- debug_print( "Old file for " .. active_source_name .. ' is ' .. current_filename)
+                    debug_print( "Old file for " .. active_source_name .. ' is ' .. current_filename)
                 end
 
                 if new_filename and (new_filename ~= current_filename) then
@@ -506,21 +499,6 @@ function do_slide(label, action)
             end
         end
     end
-end
-
-function reset_button_clicked(props, p)
-    reset(true)
-    return false
-end
-
-function next_button_clicked(props, p)
-    next_slide(true)
-    return false
-end
-
-function previous_button_clicked(props, p)
-    previous_slide(true)
-    return false
 end
 
 function reset(pressed)
