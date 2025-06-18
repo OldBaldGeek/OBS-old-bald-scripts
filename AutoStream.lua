@@ -761,7 +761,7 @@ cmd_table['time'] =
                 show_text('Time is on or after ' .. show_want)
                 return IMMEDIATE_NEXT
             else
-                show_text('More than ' .. time_late_limit_minutes .. ' after the specified time ' .. show_want)
+                show_text('More than ' .. time_late_limit_minutes .. ' minutes after the specified time ' .. show_want)
                 return goto_label(tail)
             end
         else
@@ -882,6 +882,10 @@ local lastNetworkCongestion
 local maxNetworkCongestion
 local maxNetworkCongestionTime
 
+local lastBytesSent
+local lastBytesSentNsec
+local lastRateKbps
+
 -- Initialize statistics and begin gathering
 function stats_init(a_interval)
     print('Start statistics' )
@@ -910,11 +914,23 @@ function stats_init(a_interval)
     maxNetworkCongestion = 0
     maxNetworkCongestionTime = now_hms
 
+    lastBytesSent = 0
+    lastBytesSentNsec = obs.os_gettime_ns()
+    lastRateKbps = 0
+
     -- Do an initial call to set base values
     stats_timer_callback()
 
     -- Start periodic update
     obs.timer_add(stats_timer_callback, a_interval)
+end
+
+-- Return a string showing the ratio of dropped/total
+function stat_ratios( a_dropped, a_total )
+    if a_total == 0 then
+        return string.format('%d/%d (0%%)', a_dropped, a_total)
+    end
+    return string.format('%d/%d (%.1f%%)', a_dropped, a_total, (100.0*a_dropped)/a_total)
 end
 
 -- Stop gathering statistics, print a summary
@@ -928,13 +944,13 @@ function stats_end()
     print( string.format('** Max frame render time: %.1f msec at %s',
            maxAverageRenderTime / 1000000.0, maxAverageRenderTimeTime) )
 
-    print('** Render skipped ' .. lastRenderSkip .. '/' .. lastRenderTotal ..
+    print('** Render skipped ' .. stat_ratios(lastRenderSkip, lastRenderTotal) ..
           ' Last skip ' .. lastRenderSkipTime)
 
-    print('** Encode skipped ' .. lastOutputSkip .. '/' .. lastOutputTotal ..
+    print('** Encode skipped ' .. stat_ratios(lastOutputSkip, lastOutputTotal) ..
           ' Last skip ' .. lastOutputSkipTime)
 
-    print('** Network dropped ' .. lastNetworkDrop .. '/' .. lastNetworkTotal ..
+    print('** Network dropped ' .. stat_ratios(lastNetworkDrop, lastNetworkTotal) ..
           ' Last drop ' .. lastNetworkDropTime)
 
     print( string.format('** Max network congestion: %.2f at %s',
@@ -973,8 +989,9 @@ function stats_timer_callback()
 	local total_lagged = obs.obs_get_lagged_frames()
     if total_lagged ~= lastRenderSkip then
         print('** Render skipped ' .. total_lagged - lastRenderSkip ..
-              ' frames since ' .. lastRenderSkipTime .. '. Total skips ' ..
-              total_lagged .. '/' .. lastRenderTotal )
+              ' frames since ' .. lastRenderSkipTime ..
+              '. Total skips ' .. stat_ratios(total_lagged, lastRenderTotal))
+
         lastRenderSkip = total_lagged
         lastRenderSkipTime = now_hms
     end
@@ -985,8 +1002,8 @@ function stats_timer_callback()
         local total_skipped = obsffi.video_output_get_skipped_frames(video)
         if total_skipped ~= lastOutputSkip then
             print('** Encode skipped ' .. total_skipped - lastOutputSkip ..
-                  ' frames since ' .. lastOutputSkipTime .. '. Total skips ' ..
-                  total_skipped .. '/' .. lastOutputTotal )
+                  ' frames since ' .. lastOutputSkipTime ..
+                  '. Total skips ' .. stat_ratios(total_skipped, lastOutputTotal))
             lastOutputSkip = total_skipped
             lastOutputSkipTime = now_hms
         end
@@ -997,15 +1014,29 @@ function stats_timer_callback()
         lastNetworkTotal = obs.obs_output_get_total_frames(output)
         local dropped = obs.obs_output_get_frames_dropped(output)
         local congestion = obs.obs_output_get_congestion(output)
+        local bytesSent = obs.obs_output_get_total_bytes(output)
+        local bytesSentNsec = obs.os_gettime_ns()
         obs.obs_output_release(output)
 
         if dropped ~= lastNetworkDrop then
             print('** Network dropped ' .. dropped - lastNetworkDrop ..
-                  ' frames since ' .. lastNetworkDropTime .. '. Total drops ' ..
-                  dropped .. '/' .. lastNetworkTotal )
+                  ' frames since ' .. lastNetworkDropTime ..
+                  '. Total drops ' .. stat_ratios(dropped, lastNetworkTotal))
             lastNetworkDrop = dropped
             lastNetworkDropTime = now_hms
         end
+
+        -- Log ten percent changes in streaming rate
+        local bitsBetween = (bytesSent - lastBytesSent) * 8;
+        local timePassed  = (bytesSentNsec - lastBytesSentNsec) / 1000000000.0;
+        local kbitsPerSec = bitsBetween / timePassed / 1000.0;
+        if (lastRateKbps == 0) or
+              math.abs(2*(kbitsPerSec - lastRateKbps)/(kbitsPerSec + lastRateKbps)) >= 0.1 then
+            print( string.format('** Stream rate : %i Kbps', kbitsPerSec) )
+            lastRateKbps = kbitsPerSec
+        end
+        lastBytesSent = bytesSent
+        lastBytesSentNsec = bytesSentNsec
 
         -- Congestion is a float in the range 0 (happy) to 1 (sad)
         -- Log ten percent changes
