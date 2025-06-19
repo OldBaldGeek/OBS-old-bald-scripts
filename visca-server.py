@@ -8,7 +8,7 @@
 #   127.0.0.1 - - [22/Apr/2023 12:06:18] "POST /server HTTP/1.1" 200 -
 #   127.0.0.1 - - [22/Apr/2023 12:07:19] "GET /foo/ HTTP/1.1" 200 -
 #
-# We define "right", "up, etc. to be as seen by the camera. Thus:
+# We define "right", "up", etc. to be as seen by the camera. Thus:
 # - "left" is increasing Camera pan
 # - "up" is increasing Camera tilt
 # - "in" is increasing Camera zoom
@@ -588,7 +588,7 @@ class MyServer(BaseHTTPRequestHandler):
         return response
 
     #===========================================================================
-    # Report basic servier information
+    # Report basic server information
     def do_cmd_about(self, a_post_body):
         global g_version
         global g_serialPort

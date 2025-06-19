@@ -7,7 +7,7 @@ In operation, these files will be placed in and under C:\Users\...\AppData\Roami
 ## global.ini
 
 OBS basic configuration. Specifies (among other things) the Theme, Profile, Scene Collention,
-and brwoser docks.
+and browser docks.
 
 ## basic
 
