@@ -1,7 +1,7 @@
 -- AutoStream.lua - simple automated streaming
 
 local obs = obslua
-local version = '2.0'
+local version = '2.1'
 
 -- These names must match the source names used on the control scene
 local explainer_source  = 'Automatic Streamer - explainer'
@@ -1030,7 +1030,7 @@ function stats_timer_callback()
         local bitsBetween = (bytesSent - lastBytesSent) * 8;
         local timePassed  = (bytesSentNsec - lastBytesSentNsec) / 1000000000.0;
         local kbitsPerSec = bitsBetween / timePassed / 1000.0;
-        if (lastRateKbps == 0) or
+        if (kbitsPerSec + lastRateKbps > 0) and
               math.abs(2*(kbitsPerSec - lastRateKbps)/(kbitsPerSec + lastRateKbps)) >= 0.1 then
             print( string.format('** Stream rate : %i Kbps', kbitsPerSec) )
             lastRateKbps = kbitsPerSec
