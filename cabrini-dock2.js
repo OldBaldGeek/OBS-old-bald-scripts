@@ -3,7 +3,7 @@
 // - slide show clickable buttons (alternative to hotkeys used by script)
 // - preview of current and next slide
 // - some basic statistics
-var g_version = "2.0";
+var g_version = "2.1";
 
 // OBS Websockets documentation
 //    https://github.com/obsproject/obs-websocket/blob/master/docs/generated/protocol.md
@@ -30,7 +30,9 @@ var g_slidePollRate = 500
 // Stats poll rate in msec
 // Not a multiple of g_slidePollRate, to minimize them happening at the the same time
 // on the theory that this might strain frame time
-var g_statsPollRate = 4003
+// Zero disables the stat poll (if stats gathered by AutoStream's log_stats command)
+////// var g_statsPollRate = 4003
+var g_statsPollRate = 0
 
 // Accumulate log text, to be written to source object for analysis.
 var logData = "";
@@ -133,7 +135,7 @@ function connectWebsocket()
                     }
 
                     // Start getting stats
-                    if (statsTimer == 0) {
+                    if ((statsTimer == 0) && (g_statsPollRate > 0)) {
                         statsTimer = setInterval(pollStats, g_statsPollRate);
                     }
                     break;
@@ -421,7 +423,7 @@ function processSlideshowSettings(a_data)
     }
 }
 
-// Track skipped/los frames
+// Track skipped/lost frames
 class FrameStats
 {
     constructor(a_name)
