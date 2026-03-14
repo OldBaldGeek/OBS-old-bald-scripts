@@ -8,8 +8,11 @@ import os
 import sys
 import re
 import csv
+from datetime import datetime
 
-g_version = "1.1"
+g_version = "2.1"   # include only dates g_first_date
+# 6/13/2021 is the date of the first livestreamed Mass. Earlier were on Zoom
+g_first_date = datetime(2021, 6, 13)
 
 #==============================================================================
 def get_dates( a_string ):
@@ -26,14 +29,15 @@ class SongInfo():
         if (a_writer != None) and (self.title != ''):
             # Convert the list of dates into a string
             dates_string = ''
-            for date in self.dates:
+            for d in self.dates:
+                dstr = d.strftime('%m/%d/%Y')
                 if dates_string == '':
-                    dates_string = date
+                    dates_string = dstr
                 else:
-                    dates_string += ', ' + date
+                    dates_string += ', ' + dstr
 
-            csv_row = [ self.title, self.book, len(self.dates),
-                        dates_string, self.raw_data]
+            csv_row = [ self.title, self.book, 
+                        len(self.dates), dates_string, self.raw_data ]
             a_writer.writerow(csv_row)
 
         self.title = ''
@@ -48,7 +52,10 @@ class SongInfo():
         self.book = a_book.strip().replace('"', "'")
 
     def add_dates(self, a_dates):
-        self.dates.extend( a_dates )
+            for date_string in a_dates:
+                d = datetime.strptime(date_string, '%m/%d/%Y')
+                if d >= g_first_date:
+                    self.dates.append( d )
 
     def add_raw_line(self, a_line):
         self.raw_data += a_line
@@ -69,8 +76,11 @@ def main():
 
     with open(infile_name, 'r',  encoding='utf-8') as infile:
         with open(outfile_name, 'w', newline='') as csvfile:
+            start_date = g_first_date.strftime('%m/%d/%Y')
             writer = csv.writer(csvfile)
-            writer.writerow(['Title', 'Book/Source', 'Times Used', 'Dates Used', 'Raw Data (usually multi-line)'])
+            writer.writerow(['Title', 'Book/Source',
+                             'Times Used Since ' + start_date, 'Dates Used Since ' + start_date,
+                             'Raw Data (usually multi-line)'])
 
             lines = infile.readlines()
             line_number = 1
