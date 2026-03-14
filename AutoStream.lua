@@ -1,7 +1,7 @@
 -- AutoStream.lua - simple automated streaming
 
 local obs = obslua
-local version = '2.1'
+local version = '3.0'
 
 -- These names must match the source names used on the control scene
 local explainer_source  = 'Automatic Streamer - explainer'
@@ -13,11 +13,12 @@ local continue_on_error = false     -- from checkbox
 
 -- Interpreter variables
 local error_flag = false            -- sticky error flag to stop execution
-local command_data = {}             -- array of lines from command file
+local command_data = {}             -- array of code lines from command file
 local command_index = 0             -- index into command_data
 local command_scene = 'none'        -- scene showing our progress
 local time_command_started = 0      -- time_t that current command started
 local label_to_index = {}           -- map between label and command index
+local command_to_file_line = {}     -- map code line to its line in the text file
 
   local STATE_STOPPED = 0           -- Not running
   local STATE_PAUSED  = 1           -- Paused: control scene not selected
@@ -43,6 +44,11 @@ local cmd_table = {}
 
 -- Script variables set by "$varname =" commands, used as command parameters elsewhere
 local variables = {}
+
+-- Stack for subroutine calls
+local return_stack = {}
+local return_stack_pointer = 0
+
 
 -- Description displayed in the Scripts dialog window
 function script_description()
@@ -373,7 +379,10 @@ function start_playing(a_reason)
     error_flag = false
     command_index = 0
     command_data = {}
+    command_to_file_line = {}
     log_lines = clean_log_lines
+    return_stack_pointer = 0
+    return_stack = {}
 
     if command_file == '' then
         local str = 'No command file to play'
@@ -393,19 +402,24 @@ function start_playing(a_reason)
             -- Showing in the script UI would also be good.
             this_is_not_a_function()
         else
+            local file_line = 1
             local index = 1
             for line in infile:lines() do
-                -- Omit comments to speed up interpreter
+                -- Omit blank lines and comments to speed up interpreter
                 if line ~= '' and line:find('#') ~= 1 then
                     if line:find(':') == 1 then
                         -- Code label: map to index of next command
                         label_to_index[line:sub(2)] = index
                         -- print('Label "' .. line:sub(2) .. '" index ' .. index)
                     else
+                        -- Save the command
                         table.insert(command_data, line)
+                        -- Save the line number that contains the command
+                        table.insert(command_to_file_line, file_line)
                         index = index + 1
                     end
                 end
+                file_line = file_line + 1
             end
 
             infile:close()
@@ -497,7 +511,7 @@ cmd_table['control_scene'] =
         end
 
         command_scene = tail
-        show_text('  Changed control scene to "' .. tail .. '"')
+        show_text('Changed control scene to "' .. tail .. '"')
         return DELAYED_NEXT
     end
 
@@ -549,7 +563,7 @@ cmd_table['hotkey'] =
         obs.obs_hotkey_inject_event(combo,false)
         obs.obs_hotkey_inject_event(combo,true)
         obs.obs_hotkey_inject_event(combo,false)
-        show_text('  Sent hotkey "' .. tail .. '"')
+        show_text('Sent hotkey "' .. tail .. '"')
         return DELAYED_NEXT
     end
 
@@ -562,7 +576,7 @@ cmd_table['ctl_hotkey'] =
         obs.obs_hotkey_inject_event(combo,false)
         obs.obs_hotkey_inject_event(combo,true)
         obs.obs_hotkey_inject_event(combo,false)
-        show_text('  Sent Ctrl + hotkey "' .. tail .. '"')
+        show_text('Sent Ctrl + hotkey "' .. tail .. '"')
         return DELAYED_NEXT
     end
 
@@ -582,7 +596,7 @@ cmd_table['show_streamkey'] =
             key = obs.obs_service_get_connect_info(service, 2)
         end
 
-        show_text( 'Current Streaming Key is "' .. key .. '"')
+        show_text( '  Current Streaming Key is "' .. key .. '"')
         return IMMEDIATE_NEXT
     end
 
@@ -591,7 +605,7 @@ cmd_table['show_streamkey'] =
 cmd_table['transitiontime'] =
     function(tail)
         obs.obs_frontend_set_transition_duration( tonumber(tail) )
-        show_text('  Changed transition time to "' .. tail .. '"')
+        show_text('Changed transition time to "' .. tail .. '"')
         return IMMEDIATE_NEXT
     end
 
@@ -601,7 +615,7 @@ cmd_table['transitiontime'] =
 -- There might a be use-case where command_scene = 'none'
 cmd_table['transition'] =
     function(tail)
-        show_text('  Begin Transition lasting ' .. obs.obs_frontend_get_transition_duration() .. ' msec' )
+        show_text('Begin Transition lasting ' .. obs.obs_frontend_get_transition_duration() .. ' msec' )
         set_state(STATE_TRANSITIONING)
         obs.obs_frontend_preview_program_trigger_transition()
         return DELAYED_NEXT
@@ -620,7 +634,7 @@ cmd_table['audiolevel'] =
         if source == nil then
             return set_error('no audio source "' .. (source_name or '') .. '"')
         end
-        show_text('  Set audio level of "' .. source_name .. '" to ' .. value .. ' dB')
+        show_text('Set audio level of "' .. source_name .. '" to ' .. value .. ' dB')
 
         volume = 10.0 ^ (value/20)
         if volume > 1.0 then
@@ -640,7 +654,7 @@ function goto_label(a_tail)
     if label then
         if label_to_index[label] then
             command_index = label_to_index[label] - 1
-            show_text('  Jump to ' .. label .. ' (' .. command_index + 1 .. ')')
+            show_text('  Jump to ' .. label .. ' (' .. command_to_file_line[command_index + 1] .. ')')
             return IMMEDIATE_NEXT
         end
     end
@@ -655,10 +669,10 @@ cmd_table['goto'] =
     function(tail)
         if tail and label_to_index[tail] then
             command_index = label_to_index[tail] - 1
-            show_text('  Jump to ' .. tail .. ' (' .. command_index + 1 .. ')')
+            -- show_text('  Jump to ' .. tail .. ' (' .. command_to_file_line[command_index + 1] .. ')')
             return IMMEDIATE_NEXT
         end
-        return set_error('invalid goto "' .. (tail or '') .. '"')
+        return set_error('invalid goto "' .. (tail or '') .. '"' .. command_to_file_line[command_index + 1] .. ')')
     end
 
 local monther = {January=1,  Jan=1, February=2, Feb=2,
@@ -689,7 +703,7 @@ cmd_table['date'] =
             local now_num = now.year*10000 + now.month*100 + now.day
             if now_num < want_num then
                 -- Before the date: wait for it
-                show_text('  Waiting until ' .. tail:sub(ix,iy), true)
+                show_text('Waiting until ' .. tail:sub(ix,iy), true)
                 return DELAYED_SAME
             elseif now_num == want_num then
                 -- On the date: continue
@@ -718,7 +732,7 @@ cmd_table['date'] =
                         return goto_label(tail)
                     else
                         -- not today: wait for it
-                        show_text('  Waiting until ' .. want_day, true)
+                        show_text('Waiting until ' .. want_day, true)
                         return DELAYED_SAME
                     end
                 end
@@ -754,7 +768,7 @@ cmd_table['time'] =
             local now_num = now.hour*60 + now.min
             if now_num < want_num then
                 -- Before the time: wait for it
-                show_text('  Waiting until ' .. show_want .. '. Now ' .. os.date('%I:%M:%S %p'), true)
+                show_text('Waiting until ' .. show_want .. '. Now ' .. os.date('%I:%M:%S %p'), true)
                 return DELAYED_SAME
             elseif now_num < want_num + time_late_limit_minutes then
                 -- Within a plausible window of the desired time
@@ -783,7 +797,7 @@ cmd_table['wait'] =
             return DELAYED_SAME
         end
 
-        show_text('Waited ' .. tail .. ' seconds')
+        show_text('  Waited ' .. tail .. ' seconds')
         return IMMEDIATE_NEXT
     end
 
@@ -843,6 +857,34 @@ cmd_table['stop_recording'] =
         end
 
         return DELAYED_NEXT
+    end
+
+-- Call a subroutine
+cmd_table['call'] =
+    function(tail)
+        if tail and label_to_index[tail] then
+            if return_stack_pointer < 10 then
+                return_stack_pointer = return_stack_pointer + 1
+                return_stack[ return_stack_pointer ] = command_index
+                command_index = label_to_index[tail] - 1
+                -- show_text('  Call ' .. tail .. ' (' .. command_to_file_line[command_index + 1] .. ')')
+                return IMMEDIATE_NEXT
+            end
+            return set_error('call to "' .. tail .. '" nested too deep at line ' .. command_to_file_line[command_index])
+        end
+        return set_error('invalid call to "' .. (tail or '') .. '" at line ' .. command_to_file_line[command_index])
+    end
+
+-- Return from a subroutine
+cmd_table['return'] =
+    function(tail)
+        if return_stack_pointer > 0 then
+            command_index = return_stack[ return_stack_pointer ]
+            return_stack_pointer = return_stack_pointer - 1
+            -- show_text('  Return to line ' .. ' (' .. command_to_file_line[command_index + 1] .. ')')
+            return IMMEDIATE_NEXT
+        end
+        return set_error('Return without call at line ' .. command_to_file_line[command_index])
     end
 
 -- Start gathering statistics
