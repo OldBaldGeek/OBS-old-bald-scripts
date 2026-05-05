@@ -14,6 +14,8 @@
 // - 'Hide'    div wrapping preset SHOW and SET buttons
 //
 // If using camera type aver_ptzapp or visca_jog
+// - 'ptz_buttons'  set style.visibility = "visible" to show PTZ buttons
+// - 'ptz_sticks'   set style.visibility = "hidden" to hide PTZ joysticks
 // - 'slew_up'      up/down/left/right/zoomin/zoomout slew
 // - 'slew_down'
 // - 'slew_left'
@@ -28,6 +30,8 @@
 // - 'jog_out'
 //
 // Only if using camera type visca_joystick
+// - 'ptz_buttons'  set style.visibility = "hidden" to hide PTZ buttons
+// - 'ptz_sticks'   set style.visibility = "visible" to show PTZ joysticks
 // - 'pan_tilt_stick' canvas for VISCA control of camera with good velocity control
 // - 'zoom_stick'
 //
@@ -308,6 +312,10 @@ class AverCameraController extends CameraController {
         this.serial = a_selector.serialnumber;
         console.log('Camera "' + this.name + '" serial "' + this.serial + '"');
 
+        // Show PTZ buttons, hide joysticks
+        this.getIndexedElement('ptz_buttons').style.visibility = "visible";
+        this.getIndexedElement('ptz_sticks').style.visibility = "hidden";
+
         // Map control IDs to PTZApp actions
         this.action_for_id = {};
         this.action_for_id['slew_up'+a_index]    = 'up';
@@ -436,7 +444,7 @@ class ViscaCameraController extends CameraController {
         // Originally used hostname "localhost" here and in the Visca server.
         // But in Chrome (though not Firefox) we see consistent attempts to
         // open TCP sessions in IPv6, getting RST,ACK (from server or Windows?)
-        // Chrome waits about 250 msec and does another IPv6 SYN on a new port
+        // Chrome waits about 250 msec and does another IPv6 SYN on a new port.
         // After getting another RST,ACK, Chrome waits about 50 msec, then
         // finally starts the session on IPv4.
         // Using 127.0.0.1 eliminates the RST,ACKs and delays.
@@ -445,7 +453,18 @@ class ViscaCameraController extends CameraController {
         // Counter to disambiguate requests for debugging
         this.sendCount = 0;
         this.address = a_selector.address;
-        this.slew_velocity = a_selector.slew_velocity;
+        this.slew_pan_max       = Object.hasOwn( a_selector, 'slew_pan_max')
+                                  ? a_selector.slew_pan_max
+                                  : 0x18; // Max in Sony definition; max for Vaddio HD-20
+        this.slew_pan_velocity  = Object.hasOwn( a_selector, 'slew_pan_velocity')
+                                  ? a_selector.slew_pan_velocity
+                                  : 0x0C; // Half of Sony max
+        this.slew_tilt_max      = Object.hasOwn( a_selector, 'slew_tilt_max')
+                                  ? a_selector.slew_tilt_max
+                                  : 0x14; // Max in Sony definition
+        this.slew_tilt_velocity = Object.hasOwn( a_selector, 'slew_tilt_velocity')
+                                  ? a_selector.slew_tilt_velocity
+                                  : 0x0A; // Half of Sony max
     }
 
     // Select a camera preset by number
@@ -615,6 +634,10 @@ class ViscaJogCameraController extends ViscaCameraController {
         this.jog_repeat = 250; // Jog repeats every jog_repeat msec while mouse held down
         this.jogTimer = null;
 
+        // Show PTZ buttons, hide joysticks
+        this.getIndexedElement('ptz_buttons').style.visibility = "visible";
+        this.getIndexedElement('ptz_sticks').style.visibility = "hidden";
+
         // Map control IDs to (command, value, actionState)
         this.action_for_id = {};
         this.action_for_id['slew_up'+a_index]    = ['tilt', 'up',   'SLEW'];
@@ -664,7 +687,8 @@ class ViscaJogCameraController extends ViscaCameraController {
         this.request = {};
         this.request['command'] = command;
         this.request['value'] = value;
-        this.request['speed'] = this.slew_velocity;
+        this.request['speed'] = (command == 'pan') ? this.slew_pan_velocity
+                                : this.slew_tilt_velocity;
         this.actionState = state;
 
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -737,11 +761,16 @@ class ViscaJogCameraController extends ViscaCameraController {
 
 //==============================================================================
 // Camera controller for VISCA device with slew velocity control
-// such as the Vaddio HD-20
+// such as the Vaddio HD-20 and Aver VC520 PRO
 // Has "joysticks" for PTZ
 class ViscaJoystickCameraController extends ViscaCameraController {
     constructor(a_index, a_selector, a_cam_presets) {
         super(a_index, a_selector, a_cam_presets);
+
+        // Show PTZ joysticks, hide buttons
+        this.getIndexedElement('ptz_buttons').style.visibility = "hidden";
+        this.getIndexedElement('ptz_sticks').style.visibility = "visible";
+
         this.pantilt = new JoystickPTZ( 'pan_tilt_stick' + this.index, this );
         this.zoom    = new JoystickZoom( 'zoom_stick' + this.index, this );
     }
@@ -753,8 +782,8 @@ class JoystickPTZ {
     constructor(a_canvas_id, a_visca_controller) {
         this.canvas_id = a_canvas_id;
         this.visca_controller = a_visca_controller;
-        this.pan_max = 0x18;    // Max in Sony definition; max for Vaddio HD-20
-        this.tilt_max = 0x14;   // Max for Vaddio HD-20; Sony max is 0x18
+        this.pan_max    = a_visca_controller.slew_pan_max;
+        this.tilt_max   = a_visca_controller.slew_tilt_max;
         this.dead_limit = 5;    // deadband half-width
 
         // Requested values set by mouse down, mouse move
@@ -849,8 +878,12 @@ class JoystickPTZ {
             this.desired_v_pan = -(x + this.dead_limit)/(half_width - this.dead_limit);
         }
         // Square the 0 to 1 velocity value to give finer slow-speed resolution
+        //this.desired_v_pan = (this.desired_v_pan < 1.0)
+        //        ? Math.round(this.desired_v_pan*this.desired_v_pan*this.pan_max)
+        //        : this.pan_max;
+        // At least on the VC520 PRO, squaring gives TOO MUCH space to slow-speed
         this.desired_v_pan = (this.desired_v_pan < 1.0)
-                ? Math.round(this.desired_v_pan*this.desired_v_pan*this.pan_max)
+                ? Math.round(this.desired_v_pan*this.pan_max)
                 : this.pan_max;
 
         this.desired_d_tilt = 'stop';
@@ -864,8 +897,12 @@ class JoystickPTZ {
             this.desired_v_tilt = -(y + this.dead_limit)/(half_height - this.dead_limit);
         }
         // Square the -1 to +1 value to give finer slow-speed resolution
+        //this.desired_v_tilt = (this.desired_v_tilt < 1.0)
+        //        ? Math.round(this.desired_v_tilt*this.desired_v_tilt*this.tilt_max)
+        //        : this.tilt_max;
+        // At least on the VC520 PRO, squaring gives TOO MUCH space to slow-speed
         this.desired_v_tilt = (this.desired_v_tilt < 1.0)
-                ? Math.round(this.desired_v_tilt*this.desired_v_tilt*this.tilt_max)
+                ? Math.round(this.desired_v_tilt*this.tilt_max)
                 : this.tilt_max;
 
         var text = 'Desired do_joy_action ' + this.desired_d_pan + '(' + this.desired_v_pan + ') ' +
@@ -1067,7 +1104,6 @@ class JoystickZoom {
 
 //==========================================================================
 // Save and Load presets
-// TODO: add a cancel function to stop load or save
 class SaveAndLoadPresets {
     constructor(a_visca_controller, a_result_text, a_wait_for_movement_msec) {
         this.visca_controller = a_visca_controller;

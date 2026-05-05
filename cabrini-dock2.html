@@ -14,63 +14,98 @@
                 <span class="ProgPrev" id="Program0">Program</span>
             </div>
 
-            <div class="PanTiltZoomPanel">
-                <!----------------- Pan and tilt buttons ----------------------->
-                <div id="slew_up0" class="arrow" style="position:absolute; top:0px; left:38px;">
-                    <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
-                </div>
-                <div id="jog_up0" class="arrow" style="position:absolute; top:19px; left:38px;">
-                    <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
-                </div>
-                <div id="slew_left0" class="arrow" style="position:absolute; top:38px; left:0px;">
-                    <svg style="width:19px; height:22px;"><path d="M 19 22  L 0 11  L 19 0  Z" fill="currentColor"/></svg>
-                </div>
-                <div id="jog_left0" class="arrow" style="position:absolute; top:38px; left:19px;">
-                    <svg style="width:19px; height:22px;"><path d="M 19 22  L 0 11  L 19 0  Z" fill="currentColor"/></svg>
-                </div>
-                <div style="position:absolute; top:39px; left:39px; width:20px; height:20px;">
-                    <!-- Pan/tilt (crossed double-headed arrows) image -->
-                    <svg class="cls-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 54.3 53">
-                       <polyline points="12.43 18.83 1.5 23.23 5.9 34.17"/>
-                       <polyline points="41.87 18.83 52.8 23.23 48.4 34.17"/>
-                       <path     d="M1.5,23.66 q25,11.36,50,0"/>
-                       <polyline points="35.48 43.17 27.15 51.5 18.82 43.17"/>
-                       <polyline points="18.82 9.83 27.15 1.5 35.48 9.83"/>
-                       <polyline points="27.15 51.5 27.15 32.06 27.15 20.94 27.15 1.5"/>
-                    </svg>
-                </div>
-                <div id="jog_right0" class="arrow" style="position:absolute; top:38px; left:60px;">
-                    <svg style="width:19px; height:22px;"><path d="M 0 0  L 19 11  L 0 22  Z" fill="currentColor"/></svg>
-                </div>
-                <div id="slew_right0" class="arrow" style="position:absolute; top:38px; left:79px;">
-                    <svg style="width:19px; height:22px;"><path d="M 0 0  L 19 11  L 0 22  Z" fill="currentColor"/></svg>
-                </div>
-                <div id="jog_down0" class="arrow" style="position:absolute; top:60px; left:38px;">
-                    <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
-                </div>
-                <div id="slew_down0" class="arrow" style="position:absolute; top:79px; left:38px;">
-                    <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
-                </div>
+            <div class="PanTiltZoomPanel" style="visibility:visible;">
+                <div id="ptz_buttons0" style="visibility:visible;">
+                    <!----------------- Pan and tilt buttons ----------------------->
+                    <div id="slew_up0" class="arrow" style="position:absolute; top:0px; left:38px;">
+                        <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
+                    </div>
+                    <div id="jog_up0" class="arrow" style="position:absolute; top:19px; left:38px;">
+                        <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
+                    </div>
+                    <div id="slew_left0" class="arrow" style="position:absolute; top:38px; left:0px;">
+                        <svg style="width:19px; height:22px;"><path d="M 19 22  L 0 11  L 19 0  Z" fill="currentColor"/></svg>
+                    </div>
+                    <div id="jog_left0" class="arrow" style="position:absolute; top:38px; left:19px;">
+                        <svg style="width:19px; height:22px;"><path d="M 19 22  L 0 11  L 19 0  Z" fill="currentColor"/></svg>
+                    </div>
+                    <div style="position:absolute; top:39px; left:39px; width:20px; height:20px;">
+                        <!-- Pan/tilt (crossed double-headed arrows) image -->
+                        <svg class="cls-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 54.3 53">
+                           <polyline points="12.43 18.83 1.5 23.23 5.9 34.17"/>
+                           <polyline points="41.87 18.83 52.8 23.23 48.4 34.17"/>
+                           <path     d="M1.5,23.66 q25,11.36,50,0"/>
+                           <polyline points="35.48 43.17 27.15 51.5 18.82 43.17"/>
+                           <polyline points="18.82 9.83 27.15 1.5 35.48 9.83"/>
+                           <polyline points="27.15 51.5 27.15 32.06 27.15 20.94 27.15 1.5"/>
+                        </svg>
+                    </div>
+                    <div id="jog_right0" class="arrow" style="position:absolute; top:38px; left:60px;">
+                        <svg style="width:19px; height:22px;"><path d="M 0 0  L 19 11  L 0 22  Z" fill="currentColor"/></svg>
+                    </div>
+                    <div id="slew_right0" class="arrow" style="position:absolute; top:38px; left:79px;">
+                        <svg style="width:19px; height:22px;"><path d="M 0 0  L 19 11  L 0 22  Z" fill="currentColor"/></svg>
+                    </div>
+                    <div id="jog_down0" class="arrow" style="position:absolute; top:60px; left:38px;">
+                        <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
+                    </div>
+                    <div id="slew_down0" class="arrow" style="position:absolute; top:79px; left:38px;">
+                        <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
+                    </div>
 
-                <!----------------- Zoom buttons ----------------------->
-                <div id="slew_in0" class="arrow" style="position:absolute; top:0px; left:110px;">
-                    <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
+                    <!----------------- Zoom buttons ----------------------->
+                    <div id="slew_in0" class="arrow" style="position:absolute; top:0px; left:110px;">
+                        <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
+                    </div>
+                    <div id="jog_in0" class="arrow" style="position:absolute; top:19px; left:110px;">
+                        <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
+                    </div>
+                    <div style="position:absolute; top:39px; left:110px; width:20px; height:20px;">
+                        <!-- Zoom (magnifying glass) image -->
+                        <svg class="cls-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+                            <circle cx="45" cy="47" r="35" fill="transparent" stroke-width="8" />
+                            <line x1="70" y1="70" x2="90" y2="90" stroke-width="12" />
+                        </svg>
+                    </div>
+                    <div id="jog_out0" class="arrow" style="position:absolute; top:60px; left:110px;">
+                        <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
+                    </div>
+                    <div id="slew_out0" class="arrow" style="position:absolute; top:79px; left:110px;">
+                        <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
+                    </div>
                 </div>
-                <div id="jog_in0" class="arrow" style="position:absolute; top:19px; left:110px;">
-                    <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
-                </div>
-                <div style="position:absolute; top:39px; left:110px; width:20px; height:20px;">
-                    <!-- Zoom (magnifying glass) image -->
-                    <svg class="cls-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-                        <circle cx="45" cy="47" r="35" fill="transparent" stroke-width="8" />
-                        <line x1="70" y1="70" x2="90" y2="90" stroke-width="12" />
-                    </svg>
-                </div>
-                <div id="jog_out0" class="arrow" style="position:absolute; top:60px; left:110px;">
-                    <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
-                </div>
-                <div id="slew_out0" class="arrow" style="position:absolute; top:79px; left:110px;">
-                    <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
+                <div id="ptz_sticks0" style="visibility:hidden;">
+                    <!----------------- Pan/tilt Joystick ----------------------->
+                    <div style="position:absolute; top:0px; left:0px; width:100px; height:100px; background:#808080;">
+                        <svg class="cls-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+                           <!----------------- dead-zone bars ----------------------->
+                           <line x1="0"  y1="50" x2="39"  y2="50" stroke-width="10" stroke="#C0C0C0"/>
+                           <line x1="61" y1="50" x2="100" y2="50" stroke-width="10" stroke="#C0C0C0"/>
+                           <line x1="50" y1="0"  x2="50" y2="39" stroke-width="10" stroke="#C0C0C0"/>
+                           <line x1="50" y1="61" x2="50" y2="100" stroke-width="10" stroke="#C0C0C0"/>
+
+                           <!-- Pan/tilt (crossed double-headed arrows) image -->
+                           <polyline points="44.603  46.974  40.555  48.603  42.185  52.655"/>
+                           <polyline points="55.507  46.974  59.555  48.603  57.925  52.655"/>
+                           <path     d="M40.555 48.762 q9.259 4.207 18.518 0"/>
+                           <polyline points="53.1407 55.988  50.0555 59.074  46.970  55.988"/>
+                           <polyline points="46.970  43.640  50.0555 40.555  53.140  43.640"/>
+                           <polyline points="50.055  59.074  50.0555 51.874  50.0555 47.755  50.0555 40.555"/>
+                        </svg>
+                    </div>
+                    <canvas id="pan_tilt_stick0" style="position:absolute; top:0px; left:0px;" width="100px" height="100px">
+                    Your browser does not support the HTML5 canvas tag.</canvas>
+
+                    <!----------------- Zoom Joystick ----------------------->
+                    <div style="position:absolute; top:0px; left:110px; width:20px; height:100px; background:#808080;">
+                        <!-- Zoom (magnifying glass) image -->
+                        <svg class="cls-1" style="top:50px" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 400">
+                            <circle cx="45" cy="247" r="35" fill="transparent" stroke-width="8" />
+                            <line x1="70" y1="270" x2="90" y2="290" stroke-width="12" />
+                        </svg>
+                    </div>
+                    <canvas id="zoom_stick0" style="position:absolute; top:0px; left:110px;" width="20px" height="100px">
+                    Your browser does not support the HTML5 canvas tag.</canvas>
                 </div>
 
                 <div class="PresetButtons">
@@ -99,64 +134,98 @@
                 <span class="ProgPrev" id="Program1">Program</span>
             </div>
             <div class="PanTiltZoomPanel">
-                <!----------------- Pan and tilt buttons ----------------------->
-                <div id="slew_up1" class="arrow" style="position:absolute; top:0px; left:38px;">
-                    <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
-                </div>
-                <div id="jog_up1" class="arrow" style="position:absolute; top:19px; left:38px;">
-                    <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
-                </div>
-                <div id="slew_left1" class="arrow" style="position:absolute; top:38px; left:0px;">
-                    <svg style="width:19px; height:22px;"><path d="M 19 22  L 0 11  L 19 0  Z" fill="currentColor"/></svg>
-                </div>
-                <div id="jog_left1" class="arrow" style="position:absolute; top:38px; left:19px;">
-                    <svg style="width:19px; height:22px;"><path d="M 19 22  L 0 11  L 19 0  Z" fill="currentColor"/></svg>
-                </div>
-                <div style="position:absolute; top:39px; left:39px; width:20px; height:20px;">
-                    <!-- Pan/tilt (crossed double-headed arrows) image -->
-                    <svg class="cls-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 54.3 53">
-                       <polyline points="12.43 18.83 1.5 23.23 5.9 34.17"/>
-                       <polyline points="41.87 18.83 52.8 23.23 48.4 34.17"/>
-                       <path     d="M1.5,23.66 q25,11.36,50,0"/>
-                       <polyline points="35.48 43.17 27.15 51.5 18.82 43.17"/>
-                       <polyline points="18.82 9.83 27.15 1.5 35.48 9.83"/>
-                       <polyline points="27.15 51.5 27.15 32.06 27.15 20.94 27.15 1.5"/>
-                    </svg>
-                </div>
-                <div id="jog_right1" class="arrow" style="position:absolute; top:38px; left:60px;">
-                    <svg style="width:19px; height:22px;"><path d="M 0 0  L 19 11  L 0 22  Z" fill="currentColor"/></svg>
-                </div>
-                <div id="slew_right1" class="arrow" style="position:absolute; top:38px; left:79px;">
-                    <svg style="width:19px; height:22px;"><path d="M 0 0  L 19 11  L 0 22  Z" fill="currentColor"/></svg>
-                </div>
-                <div id="jog_down1" class="arrow" style="position:absolute; top:60px; left:38px;">
-                    <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
-                </div>
-                <div id="slew_down1" class="arrow" style="position:absolute; top:79px; left:38px;">
-                    <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
-                </div>
+                <div id="ptz_buttons1" style="visibility:visible;">
+                    <!----------------- Pan and tilt buttons ----------------------->
+                    <div id="slew_up1" class="arrow" style="position:absolute; top:0px; left:38px;">
+                        <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
+                    </div>
+                    <div id="jog_up1" class="arrow" style="position:absolute; top:19px; left:38px;">
+                        <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
+                    </div>
+                    <div id="slew_left1" class="arrow" style="position:absolute; top:38px; left:0px;">
+                        <svg style="width:19px; height:22px;"><path d="M 19 22  L 0 11  L 19 0  Z" fill="currentColor"/></svg>
+                    </div>
+                    <div id="jog_left1" class="arrow" style="position:absolute; top:38px; left:19px;">
+                        <svg style="width:19px; height:22px;"><path d="M 19 22  L 0 11  L 19 0  Z" fill="currentColor"/></svg>
+                    </div>
+                    <div style="position:absolute; top:39px; left:39px; width:20px; height:20px;">
+                        <!-- Pan/tilt (crossed double-headed arrows) image -->
+                        <svg class="cls-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 54.3 53">
+                           <polyline points="12.43 18.83 1.5 23.23 5.9 34.17"/>
+                           <polyline points="41.87 18.83 52.8 23.23 48.4 34.17"/>
+                           <path     d="M1.5,23.66 q25,11.36,50,0"/>
+                           <polyline points="35.48 43.17 27.15 51.5 18.82 43.17"/>
+                           <polyline points="18.82 9.83 27.15 1.5 35.48 9.83"/>
+                           <polyline points="27.15 51.5 27.15 32.06 27.15 20.94 27.15 1.5"/>
+                        </svg>
+                    </div>
+                    <div id="jog_right1" class="arrow" style="position:absolute; top:38px; left:60px;">
+                        <svg style="width:19px; height:22px;"><path d="M 0 0  L 19 11  L 0 22  Z" fill="currentColor"/></svg>
+                    </div>
+                    <div id="slew_right1" class="arrow" style="position:absolute; top:38px; left:79px;">
+                        <svg style="width:19px; height:22px;"><path d="M 0 0  L 19 11  L 0 22  Z" fill="currentColor"/></svg>
+                    </div>
+                    <div id="jog_down1" class="arrow" style="position:absolute; top:60px; left:38px;">
+                        <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
+                    </div>
+                    <div id="slew_down1" class="arrow" style="position:absolute; top:79px; left:38px;">
+                        <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
+                    </div>
 
-                <!----------------- Zoom buttons ----------------------->
-                <div id="slew_in1" class="arrow" style="position:absolute; top:0px; left:110px;">
-                    <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
+                    <!----------------- Zoom buttons ----------------------->
+                    <div id="slew_in1" class="arrow" style="position:absolute; top:0px; left:110px;">
+                        <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
+                    </div>
+                    <div id="jog_in1" class="arrow" style="position:absolute; top:19px; left:110px;">
+                        <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
+                    </div>
+                    <div style="position:absolute; top:39px; left:110px; width:20px; height:20px;">
+                        <!-- Zoom (magnifying glass) image -->
+                        <svg class="cls-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+                            <circle cx="45" cy="47" r="35" fill="transparent" stroke-width="8" />
+                            <line x1="70" y1="70" x2="90" y2="90" stroke-width="12" />
+                        </svg>
+                    </div>
+                    <div id="jog_out1" class="arrow" style="position:absolute; top:60px; left:110px;">
+                        <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
+                    </div>
+                    <div id="slew_out1" class="arrow" style="position:absolute; top:79px; left:110px;">
+                        <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
+                    </div>
                 </div>
-                <div id="jog_in1" class="arrow" style="position:absolute; top:19px; left:110px;">
-                    <svg style="width:22px; height:19px;"><path d="M 0 19  L 11 0  L 22 19  Z" fill="currentColor"/></svg>
-                </div>
-                <div style="position:absolute; top:39px; left:110px; width:20px; height:20px;">
-                    <!-- Zoom (magnifying glass) image -->
-                    <svg class="cls-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-                        <circle cx="45" cy="47" r="35" fill="transparent" stroke-width="8" />
-                        <line x1="70" y1="70" x2="90" y2="90" stroke-width="12" />
-                    </svg>
-                </div>
-                <div id="jog_out1" class="arrow" style="position:absolute; top:60px; left:110px;">
-                    <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
-                </div>
-                <div id="slew_out1" class="arrow" style="position:absolute; top:79px; left:110px;">
-                    <svg style="width:22px; height:19px;"><path d="M 0 0  L 11 19  L 22 0  Z" fill="currentColor"/></svg>
-                </div>
+                <div id="ptz_sticks1" style="visibility:hidden;">
+                    <!----------------- Pan/tilt Joystick ----------------------->
+                    <div style="position:absolute; top:0px; left:0px; width:100px; height:100px; background:#808080;">
+                        <svg class="cls-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+                           <!----------------- dead-zone bars ----------------------->
+                           <line x1="0"  y1="50" x2="39"  y2="50" stroke-width="10" stroke="#C0C0C0"/>
+                           <line x1="61" y1="50" x2="100" y2="50" stroke-width="10" stroke="#C0C0C0"/>
+                           <line x1="50" y1="0"  x2="50" y2="39" stroke-width="10" stroke="#C0C0C0"/>
+                           <line x1="50" y1="61" x2="50" y2="100" stroke-width="10" stroke="#C0C0C0"/>
 
+                           <!-- Pan/tilt (crossed double-headed arrows) image -->
+                           <polyline points="44.603  46.974  40.555  48.603  42.185  52.655"/>
+                           <polyline points="55.507  46.974  59.555  48.603  57.925  52.655"/>
+                           <path     d="M40.555 48.762 q9.259 4.207 18.518 0"/>
+                           <polyline points="53.1407 55.988  50.0555 59.074  46.970  55.988"/>
+                           <polyline points="46.970  43.640  50.0555 40.555  53.140  43.640"/>
+                           <polyline points="50.055  59.074  50.0555 51.874  50.0555 47.755  50.0555 40.555"/>
+                        </svg>
+                    </div>
+                    <canvas id="pan_tilt_stick1" style="position:absolute; top:0px; left:0px;" width="100px" height="100px">
+                    Your browser does not support the HTML5 canvas tag.</canvas>
+
+                    <!----------------- Zoom Joystick ----------------------->
+                    <div style="position:absolute; top:0px; left:110px; width:20px; height:100px; background:#808080;">
+                        <!-- Zoom (magnifying glass) image -->
+                        <svg class="cls-1" style="top:50px" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 400">
+                            <circle cx="45" cy="247" r="35" fill="transparent" stroke-width="8" />
+                            <line x1="70" y1="270" x2="90" y2="290" stroke-width="12" />
+                        </svg>
+                    </div>
+                    <canvas id="zoom_stick1" style="position:absolute; top:0px; left:110px;" width="20px" height="100px">
+                    Your browser does not support the HTML5 canvas tag.</canvas>
+                </div>
                 <div class="PresetButtons">
                     <input type="checkbox" id="Edit1" onclick="do_edit(1, this);" />
                     <label for="Edit1">Edit</label>

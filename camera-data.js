@@ -5,15 +5,27 @@ cam_data=
 
 "cam_selectors": [
     {"name" : "Cam1",
-     "serialnumber" : "5308883500050",
-     "type" : "aver_ptzapp",
+     "serialnumber" : "5203656101150",
+     "type" : "visca_joystick",
+     "address" : "192.168.0.20",
+     "slew_pan_velocity" : 10,
+     "slew_pan_max" : 16,
+     "slew_tilt_velocity" : 15,
+     "slew_tilt_max" : 20,
      "max_preset" : 10},
     {"name" : "Cam2",
      "serialnumber" : "5309115900007",
      "type" : "visca_jog",
-     "address" : 1,
-     "slew_velocity" : 10,
+     "address" : "1",
+     "slew_pan_velocity" : 10,
+     "slew_tilt_velocity" : 15,
      "max_preset" : 10}
+    // Sample entry to show parameters for aver_ptzapp camera
+    //{"name" : "Cam2",
+    // "serialnumber" : "5309115900007",
+    // "type" : "aver_ptzapp",
+    // "address" : 1,
+    // "max_preset" : 10}
   ],
 
 "cam_presets": [
