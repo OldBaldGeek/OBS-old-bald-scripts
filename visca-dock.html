@@ -522,8 +522,9 @@
     class JoystickPTZ {
         constructor(a_canvas_id) {
             this.canvas_id = a_canvas_id;
-            this.pan_max = 0x18;    // Max in Sony definition; max for Vaddio HD-20
-            this.tilt_max = 0x14;   // Max for Vaddio HD-20; Sony max is 0x18
+            // Playing with VC520 PRO
+            this.pan_max  = 15; // 0x18;    // Max in Sony definition; max for Vaddio HD-20
+            this.tilt_max = 20; // 0x14;   // Max for Vaddio HD-20; Sony max is 0x18
             this.dead_limit = 5;    // deadband half-width
 
             // Requested values set by mouse down, mouse move
@@ -877,7 +878,7 @@
 <div id="hideable_fields" style="position:relative; top:0px; left:0px;">
     <br><br>
     <label for="camera">Camera address:</label>
-    <input id="camera" type="number" value="1">
+    <input id="camera" type="text" value="1">
     &nbsp;&nbsp;<label for="speed">Speed:</label>
     <input id="speed_val" type="number" value="0">
     &nbsp;&nbsp;<button onclick="do_read_version_info()">Read Camera Info</button>
