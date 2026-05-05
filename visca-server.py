@@ -4,10 +4,6 @@
 #   curl -X POST -i -d @test.json http://localhost:8080/server
 # -i shows response headers as well as data
 
-# TODO: Python server prints a line for every request. Can we stop it?
-#   127.0.0.1 - - [22/Apr/2023 12:06:18] "POST /server HTTP/1.1" 200 -
-#   127.0.0.1 - - [22/Apr/2023 12:07:19] "GET /foo/ HTTP/1.1" 200 -
-#
 # We define "right", "up", etc. to be as seen by the camera. Thus:
 # - "left" is increasing Camera pan
 # - "up" is increasing Camera tilt
@@ -17,29 +13,42 @@ import sys
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import urllib.parse
-import serial
 import json
+import serial
+import socket
+import select
 
-g_version = "1.3"
+g_version = "2.1"
 
 # Default configuration values overrideable by commandline parameters.
-# Originally had hostname = "localhost" here and in the Javascript client.
-# But Chrome sent some requests as IPv6, causing slowdown.
-g_hostName   = "127.0.0.1"
-g_serverPort = 8080
+#
+# Originally had g_hostname = "localhost" here and in the Javascript client.
+# But Chrome then sent some requests as IPv6, causing slowdown.
+g_hostName       = "127.0.0.1"
+g_serverPort     = 8080
 g_serialPort     = "COM1"
 g_serialBaudRate = 9600
 # At 9600 baud, a 15-byte set-position takes 15.6 msec to send,
 # and the 6-byte response another 6.25 msec.
-# so we may want to try faster baud rates to increase our speed.
+# so we may want to try faster baud rates to improe performance.
+
+# UDP port and sequence number for Sony-standard VISCA over IP.
+g_visca_udp_port = 52381
+g_sequence_number = 0
 
 g_viscaTalker = None
+
+# Status counters
+g_post_count = 0
+g_error_count = 0
 
 #==============================================================================
 # Error reporting exception
 class ErrorEx(Exception):
     def __init__(self, a_error):
+        global g_error_count
         self.errors = [a_error]
+        g_error_count += 1
 
     def add(self, a_error):
         self.errors.append(a_error)
@@ -54,13 +63,15 @@ class ViscaTalker:
         self.serial_port = None
         if a_serialPort == 'SIM':
             print(f'Using simulated serial port')
-        else:
+        elif a_serialPort != 'UDP':
             try:
                 self.serial_port = serial.Serial(a_serialPort, a_serialBaudRate,
                                                  timeout=1, write_timeout=2)
                 print(f'Opened serial port {a_serialPort} at {a_serialBaudRate} baud')
             except serial.SerialException as exc:
                 raise ErrorEx(str(exc))
+
+        print(f'Enabled Visca over UDP')
 
         # Byte arrays with message templates
         # Some bytes are overwritten by functions which use them, so be careful
@@ -77,30 +88,34 @@ class ViscaTalker:
 
         self.visca_ack_complete = bytearray.fromhex('90 41 FF 90 51 FF')
 
+    #===========================================================================
     # Send the message a_bytes to the specified a_address
     # return a bytearrary with the reply if a_rxExpected is non-zero
     # Throws ErrorEx on failure
     def send_visca(self, a_address, a_bytes, a_rxExpected):
+        if len(str(a_address)) > 3:
+            return self.send_visca_udp(a_address, a_bytes, a_rxExpected)
+
         a_bytes[0] = int(a_address) + 0x80
         if self.serial_port is None:
-            print('Simulate sending', len(a_bytes), 'bytes:', a_bytes.hex(' '))
+            print(f'Simulate sending {len(a_bytes)} bytes: {a_bytes.hex(' ')}')
             if a_rxExpected != 0:
                 # Reply data expected
                 s = bytearray(a_rxExpected)
-                print('Simulate receiving', a_rxExpected, 'bytes:', s.hex(' '))
+                print(f'Simulate receiving {a_rxExpected} bytes: {s.hex(' ')}')
                 return s
 
         else:
             # Discard any stale input before we send
             self.serial_port.reset_input_buffer()
-            print('Sending', len(a_bytes), 'bytes:', a_bytes.hex(' '))
+            print(f'Sending {len(a_bytes)} bytes: {a_bytes.hex(' ')}')
             self.serial_port.write(a_bytes)
 
             s = self.serial_port.timeout = 1    # 1-second normal timeout
             if a_rxExpected != 0:
                 # Reply data expected
                 s = self.serial_port.read(a_rxExpected)
-                print('Received', len(s), 'bytes:', s.hex(' '))
+                print(f'Received {len(s)} bytes: {s.hex(' ')}')
                 if len(s) != a_rxExpected:
                     raise ErrorEx('Incorrect serial response: ' + s.hex(' '))
                 return s
@@ -111,7 +126,7 @@ class ViscaTalker:
                 # where "X" is the remote address | 8 and s is the socket number.
                 s = self.serial_port.read(6)
                 got = len(s)
-                print('Received Ack/Comp', got, 'bytes:', s.hex(' '))
+                print(f'Received Ack/Comp {got} bytes: {s.hex(' ')}')
                 repAddr = (int(a_address) | 8) << 4
                 if (got < 3) or (s[0] != repAddr) or ((s[1] & 0xF0) != 0x40):
                     raise ErrorEx('Expected Ack, got ' + s.hex(' '))
@@ -126,10 +141,98 @@ class ViscaTalker:
                     # (Timeout is reset before the next read)
                     self.serial_port.timeout = 20
                     s = s + self.serial_port.read(6 - got)
-                    print('  Then received', len(s), 'bytes:', s.hex(' '))
+                    print(f'  Then received {len(s)} bytes: {s.hex(' ')}')
 
                 if (len(s) < 6) or (s[3] != repAddr) or ((s[4] & 0xF0) != 0x50):
                     raise ErrorEx('Expected Completion, got ' + s.hex(' '))
+
+    #===========================================================================
+    # Send the message a_bytes to the specified a_address via UDP
+    # return a bytearrary with the reply if a_rxExpected is non-zero
+    # Throws ErrorEx on failure
+    def send_visca_udp(self, a_address, a_bytes, a_rxExpected):
+        global g_sequence_number
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+        # Discard any stale input before we send
+        while True:
+            readable, _, _ = select.select([sock], [], [], 0)
+            if not readable:
+                break
+            data = sock.recv(1024)
+            print(f'Discarding {len(data)} bytes: {data.hex(' ')}')
+
+        # Prepend an 8-byte VISCA-over-IP header to the message
+        # Second byte is supposed to be 0x00 for a command, 0x10 for an inquiry
+        # according to both Aver and Sony documents.
+        # But my Aver VC520 PRO won't respond if the second byte isn't 0x00
+        buf = bytearray(2)
+        buf[0] = 0x01
+        buf[1] = 0x00 # if a_rxExpected == 0 else 0x10
+        buf.extend(len(a_bytes).to_bytes(2, byteorder='big'))  # Payload length
+        g_sequence_number += 1
+        buf.extend(g_sequence_number.to_bytes(4, byteorder='big'))
+
+        # Always specify address 1 within the packet
+        a_bytes[0] = 0x81
+        buf.extend(a_bytes)
+
+        print(f'Sending to {a_address}: {len(a_bytes)} bytes: {a_bytes.hex(' ')}')
+        sock.sendto( buf, (a_address, g_visca_udp_port) )
+
+        sock.settimeout(1.0)    # 1-second normal timeout
+        if a_rxExpected != 0:
+            # Reply data expected
+            data = self.receive_visca_ip_datagram( sock )
+            print(f'Received {len(data)} bytes: {data.hex(' ')}')
+            if len(data) != a_rxExpected:
+                raise ErrorEx('Incorrect serial response: ' + data.hex(' '))
+            return data
+        else:
+            # No data reply: should get Ack, Completion
+            #   (8-byte header) 0  1  2   (8-byte header) 0  1  2
+            #                   81 4s FF                  X0 5s FF
+            # s is the socket number.
+            #
+            # Aver VC520 PRO returns Completion immediately for all commands,
+            # but as a separate UDP packet
+            data = self.receive_visca_ip_datagram( sock )
+            got = len(data)
+            print(f'Received Ack/Comp {got} bytes: {data.hex(' ')}')
+
+            # Address in VISCA over IP reply always 0x80 + 1
+            repAddr = 0x90
+            if (got < 3) or (data[0] != repAddr) or ((data[1] & 0xF0) != 0x40):
+                raise ErrorEx('Expected Ack, got ' + data.hex(' '))
+
+            if got < 6:
+                # Try to read the remaining bytes using a long timeout.
+                # (Timeout is reset before the next read)
+                sock.settimeout(20.0)
+                data2 = self.receive_visca_ip_datagram( sock )
+                print(f'  Then received {len(data2)} bytes: {data2.hex(' ')}')
+                data += data2
+
+            if (len(data) < 6) or (data[3] != repAddr) or ((data[4] & 0xF0) != 0x50):
+                raise ErrorEx('Expected Completion, got ' + data.hex(' '))
+
+    #===========================================================================
+    # Try to receive a VISCA-IP datagram.
+    # Validate, return the VISCA portion
+    # Throw ErrorEx if not
+    def receive_visca_ip_datagram(self, a_socket):
+        data = a_socket.recv(1024)
+        #print('UDP Received', len(data), 'bytes:', data.hex(' '))
+
+        # For Aver VC520 Pro, rxLen in the header is always 1, so ignore it.
+        # TODO: should we verify the sequence number?
+        rxLen = int.from_bytes( data[2:4], byteorder='big')
+        seq   = int.from_bytes( data[4:8], byteorder='big')
+
+        # print('VISCA Received', len(data), 'bytes with sequence', seq)
+
+        # Return the data after the VISCA-IP header
+        return data[8:]
 
     #===========================================================================
     # Validate a string or integer parameter value as an integer
@@ -177,10 +280,11 @@ class ViscaTalker:
     # Set the pan and tilt
     # Throws ErrorEx on failure
     def set_position(self, a_address, a_pan, a_tilt, a_speed):
-        # Sony docs say speed is [4], and [5] is 0
-        # Aver docs say [4] and [5] both 0
+        # Sony docs say [4] is pan speed, [5] is tilt speed; range 01 to 18 or 32
+        #    if [5] is 0, use [4] for both pan and tilt
+        # Aver docs show [4] and [5] both 0
         # Vaddio HD-20 docs say pan-speed is [5], tilt-speed [4], but
-        # HD-20 may reverse them. Test shows HD-20 actually uses [4]
+        # test with HD-20 actually uses [4]
         self.visca_set_position[4] = self.parm_as_int(a_speed)
         self.visca_set_position[5] = self.parm_as_int(a_speed)
 
@@ -239,8 +343,10 @@ class ViscaTalker:
     # Throws ErrorEx on failure
     def do_slew(self, a_address, a_pan_direction, a_pan_speed, a_tilt_direction, a_tilt_speed):
         try:
-            # Sony and Aver docs say pan-speed is [4] (though Aver VC520+ ignores speed)
-            # Vaddio HD-20 docs say pan-speed is [5], but HD-20 actually uses [4].
+            # Sony and Aver docs say [4] is pan speed, [5] is tilt; range 01 to 18 or 32
+            # (though Aver VC520+ seems to ignore speed)
+            # Vaddio HD-20 docs say pan-speed is [5], tilt-speed [4], but
+            # test with HD-20 actually uses [4]
             self.visca_slew[4] = self.parm_as_int(a_pan_speed)
             if a_pan_direction == 'left':
                 self.visca_slew[6] = 0x01
@@ -272,6 +378,8 @@ class ViscaTalker:
     # Start or stop zoom: "in", "out", or "stop"
     # Throws ErrorEx on failure
     def do_zoom(self, a_address, a_direction, a_speed):
+        # Sony and Vaddio HD-20 docs show speed range 0 to 7
+        # Aver says speed not supported. Verified on VC520 + and PRO
         try:
             if a_direction == 'in':
                 self.visca_zoom[4] = 0x20 + (int(a_speed) & 0x0F)
@@ -347,6 +455,14 @@ class MyServer(BaseHTTPRequestHandler):
         self.send_header("Content-type", "text/html")
         self.end_headers()
         self.wfile.write(bytes(a_string, "utf-8"))
+
+    #===========================================================================
+    # Overridden to eliminate logging of GET/POST/OPTIONS,
+    # since these are logged AFTER processing, but do log error messages
+    def log_request(self, code='-', size='-'):
+        # But context for erros isn't shown
+        # print("Didn't log", code, size)
+        return
 
     #===========================================================================
     # Absolute set of pan and tilt, and/or zoom
@@ -478,7 +594,7 @@ class MyServer(BaseHTTPRequestHandler):
         zoom   = a_post_body.get("value")
         speed  = a_post_body.get("speed",  "0")
 
-        # zoom may be left, right, or stop for slew operation
+        # zoom may be in, out, or stop for slew operation
         # zoom may be +N or -N for jog (relative to current position)
         try:
             if zoom is None:
@@ -593,12 +709,19 @@ class MyServer(BaseHTTPRequestHandler):
         global g_version
         global g_serialPort
         global g_serialBaudRate
+        global g_visca_udp_port
+        global g_post_count
+        global g_error_count
 
         response = {}
         response['status']    = 'ok'
         response['version']   = g_version
         response['port']      = g_serialPort
         response['baud_rate'] = g_serialBaudRate
+        response['visca_udp_port'] = g_visca_udp_port
+        response['post_count']     = g_post_count
+        response['error_count']    = g_error_count
+
         return response
 
     #===========================================================================
@@ -647,26 +770,26 @@ class MyServer(BaseHTTPRequestHandler):
 
     #==============================================================================
     def do_GET(self):
-        global g_version
-        global g_serialPort
-        global g_serialBaudRate
-
         # For now, ignore the path and just send a generic page
-        # TODO: maybe add number of good and failed requests
-        # Show persistent errors like no serial port.
         self.send_response(200)
         self.send_header("Content-type", "text/html")
         self.end_headers()
         val = "<html><head><title>Visca Server</title></head><body>" +\
               "<p>This is the Cabrini Visca server.</p>" +\
-              "<p>Version: " + g_version + "</p>" +\
-              "<p>Serial interface: " + g_serialPort +\
-              " at " + str(g_serialBaudRate) + " baud.</p>" +\
-              "</body></html>";
+              "<p>Version: " + g_version + "</p>"
+        if (not g_viscaTalker.serial_port is None):
+            val += "<p>Serial on port " + g_serialPort +\
+                   " at " + str(g_serialBaudRate) + " baud.</p>"
+        val += "<p>UDP on port " + str(g_visca_udp_port) + "</p>" +\
+               "<p>Total POSTS: " + str(g_post_count) +"</p>" +\
+               "<p>Total errors: " + str(g_error_count) +"</p>" +\
+               "</body></html>"
         self.wfile.write(bytes(val, "utf-8"))
 
     #==============================================================================
     def do_POST(self):
+        global g_post_count
+
         url = urllib.parse.urlparse(self.path)
         #print("POST to path", url.path)
         if url.path != '/server':
@@ -719,6 +842,7 @@ class MyServer(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(response_string)))
         self.end_headers()
         self.wfile.write(bytes(response_string, "utf-8"))
+        g_post_count += 1
 
 #==============================================================================
 def main():
@@ -732,7 +856,8 @@ def main():
         print( 'visca-server.py {serial port} {baud rate] {TCP port}')
         print( '  parameters are optional' )
         print( '  - {serial port} serial port for VISCA. Default COM1' )
-        print( '    Specify SIM for simulated operation.' )
+        print( '    Specify SIM for simulated serial operation.' )
+        print( '    Specify UDP for IP-only operation without a serial port.' )
         print( '  - {baud rate}   serial baud rate. Default 9600' )
         print( '  - {port}        HTTP port. Default 8080' )
 
@@ -748,7 +873,7 @@ def main():
     g_viscaTalker = ViscaTalker(g_serialPort, g_serialBaudRate)
 
     webServer = HTTPServer((g_hostName, g_serverPort), MyServer)
-    print("VISCA Server started http://%s:%d" % (g_hostName, g_serverPort))
+    print(f'VISCA Server started http://{g_hostName}:{g_serverPort}')
 
     try:
         webServer.serve_forever()
@@ -756,9 +881,8 @@ def main():
         pass
 
     webServer.server_close()
-    print("Server stopped.")
+    print('Server stopped.')
 
 #==============================================================================
 if __name__ == "__main__":    
     main()
-
