@@ -15,13 +15,16 @@
             </div>
 
             <div class="PanTiltZoomPanel">
+                <!----------------- Pan/tilt Joystick ----------------------->
                 <div style="position:absolute; top:0px; left:0px; width:100px; height:100px; background:#808080;">
                     <svg class="cls-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+                       <!----------------- dead-zone bars ----------------------->
                        <line x1="0"  y1="50" x2="39"  y2="50" stroke-width="10" stroke="#C0C0C0"/>
                        <line x1="61" y1="50" x2="100" y2="50" stroke-width="10" stroke="#C0C0C0"/>
                        <line x1="50" y1="0"  x2="50" y2="39" stroke-width="10" stroke="#C0C0C0"/>
                        <line x1="50" y1="61" x2="50" y2="100" stroke-width="10" stroke="#C0C0C0"/>
 
+                       <!-- Pan/tilt (crossed double-headed arrows) image -->
                        <polyline points="44.603  46.974  40.555  48.603  42.185  52.655"/>
                        <polyline points="55.507  46.974  59.555  48.603  57.925  52.655"/>
                        <path     d="M40.555 48.762 q9.259 4.207 18.518 0"/>
@@ -29,13 +32,13 @@
                        <polyline points="46.970  43.640  50.0555 40.555  53.140  43.640"/>
                        <polyline points="50.055  59.074  50.0555 51.874  50.0555 47.755  50.0555 40.555"/>
                     </svg>
-
                 </div>
                 <canvas id="pan_tilt_stick0" style="position:absolute; top:0px; left:0px;" width="100px" height="100px">
                 Your browser does not support the HTML5 canvas tag.</canvas>
 
                 <!----------------- Zoom Joystick ----------------------->
                 <div style="position:absolute; top:0px; left:110px; width:20px; height:100px; background:#808080;">
+                    <!-- Zoom (magnifying glass) image -->
                     <svg class="cls-1" style="top:50px" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 400">
                         <circle cx="45" cy="247" r="35" fill="transparent" stroke-width="8" />
                         <line x1="70" y1="270" x2="90" y2="290" stroke-width="12" />
