@@ -18,7 +18,7 @@ import serial
 import socket
 import select
 
-g_version = "2.1"
+g_version = "2.2"
 
 # Default configuration values overrideable by commandline parameters.
 #
@@ -98,24 +98,24 @@ class ViscaTalker:
 
         a_bytes[0] = int(a_address) + 0x80
         if self.serial_port is None:
-            print(f'Simulate sending {len(a_bytes)} bytes: {a_bytes.hex(' ')}')
+            print(f'Simulate sending {len(a_bytes)} bytes: {a_bytes.hex(" ")}')
             if a_rxExpected != 0:
                 # Reply data expected
                 s = bytearray(a_rxExpected)
-                print(f'Simulate receiving {a_rxExpected} bytes: {s.hex(' ')}')
+                print(f'Simulate receiving {a_rxExpected} bytes: {s.hex(" ")}')
                 return s
 
         else:
             # Discard any stale input before we send
             self.serial_port.reset_input_buffer()
-            print(f'Sending {len(a_bytes)} bytes: {a_bytes.hex(' ')}')
+            print(f'Sending {len(a_bytes)} bytes: {a_bytes.hex(" ")}')
             self.serial_port.write(a_bytes)
 
             s = self.serial_port.timeout = 1    # 1-second normal timeout
             if a_rxExpected != 0:
                 # Reply data expected
                 s = self.serial_port.read(a_rxExpected)
-                print(f'Received {len(s)} bytes: {s.hex(' ')}')
+                print(f'Received {len(s)} bytes: {s.hex(" ")}')
                 if len(s) != a_rxExpected:
                     raise ErrorEx('Incorrect serial response: ' + s.hex(' '))
                 return s
@@ -126,7 +126,7 @@ class ViscaTalker:
                 # where "X" is the remote address | 8 and s is the socket number.
                 s = self.serial_port.read(6)
                 got = len(s)
-                print(f'Received Ack/Comp {got} bytes: {s.hex(' ')}')
+                print(f'Received Ack/Comp {got} bytes: {s.hex(" ")}')
                 repAddr = (int(a_address) | 8) << 4
                 if (got < 3) or (s[0] != repAddr) or ((s[1] & 0xF0) != 0x40):
                     raise ErrorEx('Expected Ack, got ' + s.hex(' '))
@@ -141,10 +141,10 @@ class ViscaTalker:
                     # (Timeout is reset before the next read)
                     self.serial_port.timeout = 20
                     s = s + self.serial_port.read(6 - got)
-                    print(f'  Then received {len(s)} bytes: {s.hex(' ')}')
+                    print(f'  Then received {len(s)} bytes: {s.hex(" ")}')
 
                 if (len(s) < 6) or (s[3] != repAddr) or ((s[4] & 0xF0) != 0x50):
-                    raise ErrorEx('Expected Completion, got ' + s.hex(' '))
+                    raise ErrorEx('Expected Completion, got ' + s.hex(" "))
 
     #===========================================================================
     # Send the message a_bytes to the specified a_address via UDP
@@ -160,7 +160,7 @@ class ViscaTalker:
             if not readable:
                 break
             data = sock.recv(1024)
-            print(f'Discarding {len(data)} bytes: {data.hex(' ')}')
+            print(f'Discarding {len(data)} bytes: {data.hex(" ")}')
 
         # Prepend an 8-byte VISCA-over-IP header to the message
         # Second byte is supposed to be 0x00 for a command, 0x10 for an inquiry
@@ -177,14 +177,14 @@ class ViscaTalker:
         a_bytes[0] = 0x81
         buf.extend(a_bytes)
 
-        print(f'Sending to {a_address}: {len(a_bytes)} bytes: {a_bytes.hex(' ')}')
+        print(f'Sending to {a_address}: {len(a_bytes)} bytes: {a_bytes.hex(" ")}')
         sock.sendto( buf, (a_address, g_visca_udp_port) )
 
         sock.settimeout(1.0)    # 1-second normal timeout
         if a_rxExpected != 0:
             # Reply data expected
             data = self.receive_visca_ip_datagram( sock )
-            print(f'Received {len(data)} bytes: {data.hex(' ')}')
+            print(f'Received {len(data)} bytes: {data.hex(" ")}')
             if len(data) != a_rxExpected:
                 raise ErrorEx('Incorrect serial response: ' + data.hex(' '))
             return data
@@ -198,7 +198,7 @@ class ViscaTalker:
             # but as a separate UDP packet
             data = self.receive_visca_ip_datagram( sock )
             got = len(data)
-            print(f'Received Ack/Comp {got} bytes: {data.hex(' ')}')
+            print(f'Received Ack/Comp {got} bytes: {data.hex(" ")}')
 
             # Address in VISCA over IP reply always 0x80 + 1
             repAddr = 0x90
@@ -210,7 +210,7 @@ class ViscaTalker:
                 # (Timeout is reset before the next read)
                 sock.settimeout(20.0)
                 data2 = self.receive_visca_ip_datagram( sock )
-                print(f'  Then received {len(data2)} bytes: {data2.hex(' ')}')
+                print(f'  Then received {len(data2)} bytes: {data2.hex(" ")}')
                 data += data2
 
             if (len(data) < 6) or (data[3] != repAddr) or ((data[4] & 0xF0) != 0x50):
